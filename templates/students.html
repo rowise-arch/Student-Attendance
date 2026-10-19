@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Students{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Students</h1><p>{{ students|length }} student{{ '' if students|length == 1 else 's' }} · register cards and manage the class list</p></div>
+  <div class="row">
+    <a class="btn secondary" href="{{ url_for('students_import') }}">Import CSV</a>
+    <a class="btn secondary" href="{{ url_for('students_export') }}">Export CSV</a>
+    <a class="btn" href="{{ url_for('student_form') }}">+ Add student</a>
+  </div>
+</div>
+{% set pc = (100 * (prog.cards or 0) / prog.total)|round|int if prog.total else 0 %}
+{% set pp = (100 * (prog.photos or 0) / prog.total)|round|int if prog.total else 0 %}
+{% if prog.total %}
+<div class="setup-progress card">
+  <div class="sp-item">
+    <div class="sp-head"><b>Cards registered</b><span><b>{{ prog.cards or 0 }}</b> of {{ prog.total }}</span></div>
+    <div class="bar" role="progressbar" aria-valuenow="{{ pc }}" aria-valuemin="0" aria-valuemax="100" aria-label="Cards registered"><span style="width:{{ pc }}%"></span></div>
+    {% if prog.total - (prog.cards or 0) %}<a class="small" href="{{ url_for('students', missing='card', section=section_id) }}">Show {{ prog.total - (prog.cards or 0) }} without a card</a>{% else %}<span class="small" style="color:var(--present-ink)">✓ Everyone has a card</span>{% endif %}
+  </div>
+  <div class="sp-item">
+    <div class="sp-head"><b>Photos added</b><span><b>{{ prog.photos or 0 }}</b> of {{ prog.total }}</span></div>
+    <div class="bar" role="progressbar" aria-valuenow="{{ pp }}" aria-valuemin="0" aria-valuemax="100" aria-label="Photos added"><span style="width:{{ pp }}%"></span></div>
+    {% if prog.total - (prog.photos or 0) %}<a class="small" href="{{ url_for('students', missing='photo', section=section_id) }}">Show {{ prog.total - (prog.photos or 0) }} without a photo</a>{% else %}<span class="small" style="color:var(--present-ink)">✓ Everyone has a photo</span>{% endif %}
+  </div>
+</div>
+{% endif %}
+<div class="card">
+  <form class="filters" method="get" style="margin-bottom:14px">
+    <div class="field" style="flex:1"><label for="q">Search</label>
+      <input type="text" id="q" name="q" value="{{ q }}" placeholder="Name, student no. or card UID"></div>
+    <div class="field"><label for="sec">Section</label>
+      <select id="sec" name="section"><option value="">All sections</option>
+        {% for s in sections %}<option value="{{ s.id }}" {{ 'selected' if s.id == section_id }}>{{ s.label }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="miss">Show</label>
+      <select id="miss" name="missing">
+        <option value="">Everyone</option>
+        <option value="card" {{ 'selected' if missing == 'card' }}>No card yet</option>
+        <option value="photo" {{ 'selected' if missing == 'photo' }}>No photo yet</option>
+      </select></div>
+    <button class="btn secondary">Filter</button>
+  </form>
+  <div class="table-wrap sticky-head">
+  <table class="sortable">
+    <thead><tr><th>Student No.</th><th>Name</th><th>Section</th><th>RFID Card</th><th data-nosort><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for s in students %}
+      <tr>
+        <td>{{ s.student_no }}</td>
+        <td data-sort="{{ s.last_name }} {{ s.first_name }}"><div class="person">
+          {% if s.photo %}<img class="avatar-sm" src="{{ url_for('photo', name=s.photo) }}" alt="" loading="lazy">{% else %}<span class="avatar-sm" aria-hidden="true">{{ s.first_name[0] }}{{ s.last_name[0] }}</span>{% endif %}
+          <a href="{{ url_for('student_profile', student_id=s.id) }}"><b>{{ s.last_name }}, {{ s.first_name }}</b></a></div></td>
+        <td>{{ s.section or '—' }}</td>
+        <td data-sort="{{ s.rfid_uid or '' }}">{% if s.rfid_uid %}<span class="mono">{{ s.rfid_uid }}</span>{% else %}<span class="badge b-ABSENT">No card</span>{% endif %}</td>
+        <td class="actions">
+          <a class="btn sm secondary" href="{{ url_for('student_form', student_id=s.id) }}">Edit</a>
+          <form class="inline" method="post" action="{{ url_for('student_delete', student_id=s.id) }}">
+            <button type="button" class="btn sm danger hold" aria-label="Hold to delete (press and hold)"><span>Hold to delete</span><span class="hold-fill" aria-hidden="true">Hold to delete</span></button></form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">
+        {% if missing and not q %}{{ 'Everyone here has a card.' if missing == 'card' else 'Everyone here has a photo.' }} <a href="{{ url_for('students', section=section_id) }}">Show everyone</a>
+        {% elif q or section_id or missing %}No students match these filters. <a href="{{ url_for('students') }}">Clear filters</a>
+        {% else %}<div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-7 7-7s7 3 7 7M19 8v6M16 11h6"/></svg>
+          <h2>No students yet</h2><p>Add students one by one (tap their card to link it), or import a class list from a CSV file.</p>
+          <div class="row" style="justify-content:center"><a class="btn secondary" href="{{ url_for('students_import') }}">Import CSV</a><a class="btn" href="{{ url_for('student_form') }}">+ Add student</a></div></div>{% endif %}
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

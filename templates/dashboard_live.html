@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ s.subject }} in session{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="live-tag"><span class="live-dot" aria-hidden="true"></span> Class in session</div>
+    <h1>{{ s.label }}</h1>
+    <p>{{ 'Scheduled' if s.slot_id else 'Started' }} {{ s.started_at|time12 }}{% if s.scheduled_end %} – {{ s.scheduled_end|time12 }}{% endif %} · Late after <b>{{ late_after|time12 }}</b>
+      · {% if s.scheduled_end %}Closes by itself at {{ s.scheduled_end|time12 }}{% else %}Extra class: click End class when done{% endif %}</p>
+  </div>
+  <div class="row">
+    <a class="btn secondary" href="{{ url_for('kiosk') }}" target="_blank" rel="noopener">Open kiosk screen</a>
+    <form method="post" action="{{ url_for('session_cancel', session_id=s.id) }}">
+      <button type="button" class="btn danger hold" aria-label="Cancel this meeting, no class today (press and hold)"><span>Hold: no class today</span><span class="hold-fill" aria-hidden="true">Hold: no class today</span></button>
+    </form>
+    <form method="post" action="{{ url_for('session_end', session_id=s.id) }}">
+      <button class="btn danger-solid">{{ 'End class early' if s.scheduled_end else 'End class' }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat total"><div class="label">Enrolled</div><div class="value" id="c-total">–</div><div class="sub">in this section</div></div>
+  <div class="stat present"><div class="label">Present</div><div class="value" id="c-present">–</div><div class="sub">on time</div></div>
+  <div class="stat late"><div class="label">Late</div><div class="value" id="c-late">–</div><div class="sub">after {{ late_after|time12 }}</div></div>
+  <div class="stat excused"><div class="label">Excused</div><div class="value" id="c-excused">–</div><div class="sub">marked by you</div></div>
+  <div class="stat absent"><div class="label">Not yet</div><div class="value" id="c-absent">–</div><div class="sub">absent if no tap</div></div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="roster-title">
+    <div class="card-head">
+      <h2 id="roster-title">Class list</h2>
+      <div class="seg" role="group" aria-label="Show">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="none" aria-pressed="false">Not yet</button>
+        <button type="button" data-filter="in" aria-pressed="false">Here</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="roster">
+        <thead><tr><th>Student</th><th>Time in</th><th>Status</th><th><span class="sr-only">Mark by hand</span></th></tr></thead>
+        <tbody id="roster"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+  <section class="card" aria-labelledby="feed-title" style="align-self:start">
+    <div class="card-head"><h2 id="feed-title">Taps</h2><span class="muted small">live</span></div>
+    <ul class="feed" id="feed" aria-live="polite" aria-relevant="additions"><li class="empty">No taps yet. Taps appear here the moment a card is read.</li></ul>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SESSION_ID = {{ s.id }};
+window.SKIP_SCAN_TOAST = true;   // the class list and taps panel already show each tap
+const LABELS = {IN: "Recorded", DUP: "Repeat tap", NOCLASS: "No class", NOTINCLASS: "Not in class", UNKNOWN: "Unknown card"};
+const BADGE = {IN: "IN", DUP: "DUP", NOCLASS: "UNKNOWN", NOTINCLASS: "UNKNOWN", UNKNOWN: "UNKNOWN"};
+const STATUS_TEXT = {PRESENT: "Present", LATE: "Late", EXCUSED: "Excused", ABSENT: "Absent"};
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = id => document.getElementById(id), esc = ui.esc;
+const t12 = hms => { if (!hms) return "—"; const [h, m] = hms.split(":"); const H = +h % 12 || 12; return `${H}:${m} ${+h < 12 ? "AM" : "PM"}`; };
+let filter = "all", roster = [], lastId = null, busy = false;
+
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  filter = b.dataset.filter;
+  document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  renderRoster();
+}));
+
+function renderRoster() {
+  const rows = roster.filter(r => filter === "all" || (filter === "none" ? !r.status : !!r.status));
+  $("roster").innerHTML = rows.length ? rows.map(r => `
+    <tr class="${r.status ? "" : "pending"}">
+      <td><b>${esc(r.last_name)}, ${esc(r.first_name)}</b><div class="small muted">${esc(r.student_no)}${r.rfid_uid ? "" : " · no card"}</div></td>
+      <td class="mono-num">${t12(r.time_in)}</td>
+      <td>${r.status ? `<span class="badge b-${r.status}">${STATUS_TEXT[r.status]}</span>` : '<span class="badge b-WAIT">Not yet</span>'}</td>
+      <td class="actions">
+        <label class="sr-only" for="m-${r.id}">Mark ${esc(r.first_name)} ${esc(r.last_name)}</label>
+        <select id="m-${r.id}" class="mark-select" data-student="${r.id}">
+          <option value="" disabled ${r.status ? "" : "selected"}>Mark…</option>
+          ${["PRESENT", "LATE", "EXCUSED", "ABSENT"].map(s => `<option value="${s}" ${r.status === s ? "selected" : ""}>${STATUS_TEXT[s]}</option>`).join("")}
+        </select>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="4" class="empty">${filter === "none" ? "Everyone is here." : "Nobody yet."}</td></tr>`;
+}
+
+$("roster").addEventListener("change", async e => {
+  const sel = e.target.closest(".mark-select");
+  if (!sel) return;
+  busy = true;
+  const r = await fetch("/api/mark", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({session_id: SESSION_ID, student_id: +sel.dataset.student, status: sel.value})});
+  busy = false;
+  if (!r.ok) ui.toast({type: "error", title: "Couldn't save that mark"});
+  refresh();
+});
+
+function feedItem(f) {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="badge b-${BADGE[f.result] || "DUP"}">${LABELS[f.result] || f.result}</span>
+    <div class="who"><b>${f.name ? esc(f.name) : "Unregistered card"}</b>
+      <span class="muted small">${f.name ? esc(f.student_no) : '<span class="mono">' + esc(f.uid) + "</span>"}${f.result === "NOTINCLASS" ? " · belongs to another section" : ""}</span></div>
+    <time class="when">${t12(f.scanned_at.slice(11))}</time>`;
+  return li;
+}
+function renderFeed(items) {
+  const feed = $("feed");
+  if (!items.length) { if (lastId === null) lastId = 0; return; }
+  if (lastId === null) { feed.innerHTML = ""; items.forEach(f => feed.appendChild(feedItem(f))); }
+  else {
+    const fresh = items.filter(f => f.id > lastId).reverse();
+    if (fresh.length) feed.querySelector(".empty")?.remove();
+    fresh.forEach(f => {
+      const li = feedItem(f); if (!reduceMotion) li.classList.add("is-new"); feed.prepend(li);
+      requestAnimationFrame(() => requestAnimationFrame(() => li.classList.remove("is-new")));
+      if (f.result === "NOTINCLASS") ui.toast({type: "warn", title: `${f.name} isn't in this class`, sub: "They belong to another section.", autodismiss: 5000});
+      if (f.result === "UNKNOWN") ui.toast({type: "warn", id: "card-" + f.uid, autodismiss: 0, title: "Unregistered card tapped", sub: `Card ${f.uid}`,
+        html: `<div class="t-actions"><a class="btn sm" href="/students/new?uid=${encodeURIComponent(f.uid)}" target="_blank" rel="noopener">Register this card</a></div>`});
+    });
+    while (feed.children.length > 20) feed.lastElementChild.remove();
+  }
+  lastId = Math.max(...items.map(f => f.id));
+}
+
+async function refresh() {
+  if (busy) return;
+  try {
+    const res = await fetch("/api/live");
+    if (res.status === 401) { location.href = "/login"; return; }
+    const d = await res.json();
+    if (!d.active || d.session_id !== SESSION_ID) { location.href = d.active ? "/" : "/sessions/" + SESSION_ID; return; }
+    const dot = $("reader-dot"); dot.className = "dot " + d.reader.state; $("reader-text").textContent = d.reader_label;
+    const c = d.counts;
+    $("c-total").textContent = c.TOTAL; $("c-present").textContent = c.PRESENT; $("c-late").textContent = c.LATE;
+    $("c-excused").textContent = c.EXCUSED; $("c-absent").textContent = c.ABSENT;
+    // Don't redraw while the teacher has a dropdown open
+    if (!document.activeElement?.classList.contains("mark-select")) { roster = d.roster; renderRoster(); }
+    renderFeed(d.feed);
+  } catch (e) { console.error(e); }
+}
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 1500);
+document.addEventListener("rfid-result", refresh);
+</script>
+{% endblock %}

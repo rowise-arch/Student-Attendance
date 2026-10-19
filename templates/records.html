@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Class records{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Class records</h1>
+    <p>{% if cls %}{{ cls.label }} · {{ start|nicedate }} – {{ end|nicedate }} · {{ sessions|length }} meeting{{ '' if sessions|length == 1 else 's' }}{% else %}Attendance per class, meeting by meeting{% endif %}</p></div>
+  {% if cls %}
+  <div class="row no-print">
+    <a class="btn secondary" href="{{ url_for('records_export', **{'class': class_id, 'from': start|string, 'to': end|string}) }}">Export CSV</a>
+    <button class="btn secondary" onclick="window.print()">Print</button>
+  </div>
+  {% endif %}
+</div>
+
+{% if not classes %}
+<div class="card"><div class="empty-state">
+  <h2>No classes in this semester</h2><p>Add your classes and their weekly schedule. Their attendance shows up here after each meeting.</p>
+  <a class="btn" href="{{ url_for('classes_page') }}">Add a class</a></div></div>
+{% else %}
+<div class="card">
+  <form class="filters" method="get" style="margin-bottom:16px">
+    {% if terms|length > 1 %}
+    <div class="field"><label for="term">Semester</label>
+      <select id="term" name="term" onchange="this.form.querySelector('#cls').disabled = true; this.form.from.value = ''; this.form.to.value = ''; this.form.submit()">
+        {% for t in terms %}<option value="{{ t.id }}" {{ 'selected' if record_term and t.id == record_term.id }}>{{ t.name }}</option>{% endfor %}
+      </select></div>
+    {% endif %}
+    <div class="field" style="flex:2;min-width:240px"><label for="cls">Class</label>
+      <select id="cls" name="class" onchange="this.form.submit()">
+        {% for c in classes %}<option value="{{ c.id }}" {{ 'selected' if c.id == class_id }}>{{ c.label }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="from">From</label><input type="date" id="from" name="from" value="{{ start }}"></div>
+    <div class="field"><label for="to">To</label><input type="date" id="to" name="to" value="{{ end }}"></div>
+    <button class="btn">Apply</button>
+  </form>
+
+  {% if not sessions %}
+    <p class="empty">This class has no meetings between these dates yet. Meetings appear here after each scheduled class.</p>
+  {% elif not rows %}
+    <p class="empty">No students in this section yet.</p>
+  {% else %}
+  <div class="legend small no-print">
+    <span><span class="mk mk-P">P</span> Present</span><span><span class="mk mk-L">L</span> Late</span>
+    <span><span class="mk mk-E">E</span> Excused</span><span><span class="mk mk-A">A</span> Absent</span>
+    <span class="muted">Click a date to open or edit that meeting.</span>
+  </div>
+  <div class="table-wrap matrix-wrap">
+    <table class="matrix sortable">
+      <thead><tr>
+        <th class="sticky-col">Student</th>
+        <th class="num">Rate</th><th class="num">P</th><th class="num">L</th><th class="num">E</th><th class="num tot-end">A</th>
+        {% for se in sessions %}
+          <th data-nosort class="mcol"><a href="{{ url_for('session_page', session_id=se.id) }}" title="{{ se.date|nicedate }} {{ se.started_at|time12 }}">{{ se.date|shortdate }}<br><span class="muted">{{ se.started_at|time12 }}</span></a></th>
+        {% endfor %}
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="sticky-col" data-sort="{{ r.student.last_name }} {{ r.student.first_name }}">
+            <a href="{{ url_for('student_profile', student_id=r.student.id) }}">{{ r.student.last_name }}, {{ r.student.first_name }}</a>
+            <div class="small muted">{{ r.student.student_no }}</div></td>
+          <td class="num" data-sort="{{ r.rate if r.rate is not none else -1 }}"><b class="{{ 'rate-low' if r.rate is not none and r.rate < 80 }}">{{ r.rate ~ '%' if r.rate is not none else '—' }}</b></td>
+          <td class="num">{{ r.counts.PRESENT }}</td><td class="num">{{ r.counts.LATE }}</td>
+          <td class="num">{{ r.counts.EXCUSED }}</td><td class="num tot-end">{{ r.counts.ABSENT }}</td>
+          {% for c in r.cells %}
+            {% set k = c.status[0] %}
+            <td class="mcol"><span class="mk mk-{{ k }}" title="{{ c.status|title }}{{ ' · ' ~ (c.time_in|time12) if c.time_in }}{{ ' · ' ~ c.remarks if c.remarks }}">{{ k }}</span></td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="small muted" style="margin:12px 0 0">Rate = present + late ÷ meetings held. Below 80% is highlighted.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

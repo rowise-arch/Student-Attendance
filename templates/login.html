@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · {{ settings.school_name }} Attendance</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="login-wrap">
+  <form class="login-card" method="post">
+    {% if settings.school_logo %}<img class="brand-logo brand-img" src="{{ url_for('branding', name=settings.school_logo) }}" alt="{{ settings.school_name }} logo">{% else %}<div class="brand-logo" aria-hidden="true">RF</div>{% endif %}
+    <h1>Teacher sign in</h1>
+    <p class="muted" style="margin:4px 0 20px">{{ settings.school_name }} · RFID Attendance</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}<div class="field-error" role="alert" style="margin:0 0 14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>{{ msg }}</div>{% endfor %}
+    {% endwith %}
+    <div class="field"><label for="u">Username</label><input type="text" id="u" name="username" autocomplete="username" autofocus required></div>
+    <div class="field"><label for="p">Password</label><div class="pw-wrap"><input type="password" id="p" name="password" autocomplete="current-password" required><button type="button" class="pw-toggle" aria-pressed="false" aria-label="Show password">Show</button></div></div>
+    <button class="btn" style="width:100%;justify-content:center;margin-top:6px">Sign in</button>
+  </form>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

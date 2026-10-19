@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Import students{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('students') }}">Students</a><span aria-hidden="true">›</span><span aria-current="page">Import</span></nav>
+    <h1>Import students</h1><p>Add a whole class list at once, or copy students from another teacher's PC.</p></div>
+  <a class="btn secondary" href="{{ url_for('students') }}">← Back to students</a>
+</div>
+<div class="grid grid-2">
+  <div class="card">
+    <h2>1. Prepare the file</h2>
+    <p style="margin-top:0">Save a sheet from Excel or Google Sheets as <b>CSV</b> with these column headings in the first row:</p>
+    <div class="table-wrap"><table>
+      <thead><tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody><tr><td>2024-0001</td><td>Juan</td><td>Dela Cruz</td><td>Grade 10</td><td>Rizal</td><td class="mono">04A1B2C3</td></tr>
+             <tr><td>2024-0002</td><td>Maria</td><td>Santos</td><td>Grade 10</td><td>Rizal</td><td></td></tr></tbody>
+    </table></div>
+    <ul class="small muted" style="padding-left:18px;margin-bottom:0">
+      <li><b>student_no, first_name, last_name</b> are required. The others can be blank.</li>
+      <li>Sections that don't exist yet are created for you.</li>
+      <li>A student number that already exists is <b>updated</b> instead of duplicated.</li>
+      <li>Leave <b>rfid_uid</b> blank to link cards later by tapping them on the Edit student page.</li>
+      <li>Tip: <a href="{{ url_for('students_export') }}">Export CSV</a> on another teacher's PC gives a file in exactly this format, cards included.</li>
+    </ul>
+  </div>
+  <div class="card" style="align-self:start">
+    <h2>2. Upload it</h2>
+    <form method="post" enctype="multipart/form-data">
+      <div class="field"><label for="file">CSV file</label>
+        <input type="file" id="file" name="file" accept=".csv,text/csv" required></div>
+      <button class="btn">Import</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

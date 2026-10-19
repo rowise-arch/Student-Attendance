@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ s.subject }} · {{ s.date|shortdate }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="small" href="{{ url_for('records', **{'class': s.class_id}) }}">← {{ s.label }} records</a>
+    <h1 style="margin-top:6px">{{ s.label }}</h1>
+    <p>{{ s.date|nicedate }} · {{ s.started_at|time12 }} – {{ s.ended_at|time12 if s.ended_at else 'still running' }} · Late after {{ late_after|time12 }}</p>
+  </div>
+  <div class="row no-print">
+    {% if not s.ended_at and not s.cancelled and s.date == today|string %}<a class="btn" href="{{ url_for('dashboard') }}">Go to live view</a>{% endif %}
+    <button class="btn secondary" onclick="window.print()">Print</button>
+    <form method="post" action="{{ url_for('session_delete', session_id=s.id) }}">
+      <button type="button" class="btn danger hold" aria-label="Delete this meeting (press and hold)"><span>Hold to delete meeting</span><span class="hold-fill" aria-hidden="true">Hold to delete meeting</span></button>
+    </form>
+  </div>
+</div>
+
+{% if s.cancelled %}
+<div class="notice">
+  <div><b>This meeting was cancelled</b> (no class). It doesn't count in the class record.</div>
+  <form method="post" action="{{ url_for('session_cancel', session_id=s.id) }}"><input type="hidden" name="restore" value="1"><button class="btn sm secondary">Restore meeting</button></form>
+</div>
+{% endif %}
+<div class="row small" style="margin-bottom:14px;gap:8px">
+  <span class="badge b-PRESENT">Present {{ counts.PRESENT }}</span>
+  <span class="badge b-LATE">Late {{ counts.LATE }}</span>
+  <span class="badge b-EXCUSED">Excused {{ counts.EXCUSED }}</span>
+  <span class="badge b-ABSENT">Absent {{ counts.ABSENT }}</span>
+  <span class="muted">of {{ counts.TOTAL }} students</span>
+</div>
+
+<div class="card table-wrap">
+  <table class="sortable">
+    <thead><tr><th>Student No.</th><th>Name</th><th>Time in</th><th>Status</th><th>Remarks</th><th class="no-print"><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for r in roster %}
+      {% set st = r.status or 'ABSENT' %}
+      <tr>
+        <td>{{ r.student_no }}</td>
+        <td data-sort="{{ r.last_name }} {{ r.first_name }}"><a href="{{ url_for('student_profile', student_id=r.id) }}">{{ r.last_name }}, {{ r.first_name }}</a></td>
+        <td data-sort="{{ r.time_in or '' }}">{{ r.time_in|time12 }}</td>
+        <td><span class="badge b-{{ st }}">{{ st|title }}</span></td>
+        <td>{{ r.remarks or '' }}</td>
+        <td class="actions no-print"><button class="btn sm secondary" type="button"
+          onclick='openEdit({{ {"id": r.id, "name": r.first_name ~ " " ~ r.last_name, "status": st, "remarks": r.remarks or ""}|tojson }})'>Edit</button></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No students in this section.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<dialog id="edit" aria-labelledby="edit-title">
+  <form method="post" action="{{ url_for('session_mark', session_id=s.id) }}">
+    <h2 id="edit-title">Change mark</h2>
+    <p class="muted" id="edit-name" style="margin-top:-6px"></p>
+    <input type="hidden" name="student_id" id="m-student">
+    <div class="field"><label for="m-status">Status</label>
+      <select id="m-status" name="status">
+        <option value="PRESENT">Present</option><option value="LATE">Late</option>
+        <option value="EXCUSED">Excused</option><option value="ABSENT">Absent</option>
+      </select></div>
+    <div class="field"><label for="m-remarks">Remarks</label>
+      <input type="text" id="m-remarks" name="remarks" placeholder="e.g. Forgot ID, medical certificate"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button type="button" class="btn secondary" onclick="document.getElementById('edit').close()">Cancel</button>
+      <button class="btn">Save</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+function openEdit(r) {
+  document.getElementById("m-student").value = r.id;
+  document.getElementById("edit-name").textContent = r.name;
+  document.getElementById("m-status").value = r.status;
+  document.getElementById("m-remarks").value = r.remarks;
+  document.getElementById("edit").showModal();
+}
+</script>
+{% endblock %}

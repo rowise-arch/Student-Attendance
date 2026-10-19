@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ c.subject }} schedule{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="small" href="{{ url_for('classes_page') }}">← Classes & schedule</a>
+    <h1 style="margin-top:6px">{{ c.label }}</h1>
+    <p>{{ schedule or 'No weekly times yet: this class will only run if you start it by hand.' }}</p>
+  </div>
+  <a class="btn secondary" href="{{ url_for('records', **{'class': c.id}) }}">View records</a>
+</div>
+
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="slots-title">
+    <h2 id="slots-title">Weekly schedule</h2>
+    <table>
+      <thead><tr><th>Day</th><th>Time</th><th><span class="sr-only">Remove</span></th></tr></thead>
+      <tbody>
+      {% for sl in slots %}
+        <tr><td><b>{{ WEEKDAYS[sl.weekday] }}</b></td><td>{{ sl.start_time|hm }} – {{ sl.end_time|hm }}</td>
+          <td class="actions"><form class="inline" method="post" action="{{ url_for('slot_delete', slot_id=sl.id) }}">
+            <button type="button" class="btn sm danger hold" aria-label="Remove {{ WEEKDAYS[sl.weekday] }} (press and hold)"><span>Hold to remove</span><span class="hold-fill" aria-hidden="true">Hold to remove</span></button></form></td></tr>
+      {% else %}
+        <tr><td colspan="3" class="empty">No times yet. Add the days and time this class meets.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <h2 style="margin-top:24px">Add a time</h2>
+    <form method="post" novalidate>
+      <div class="day-picker" role="group" aria-label="Days" style="margin-bottom:12px">
+        {% for d in range(7) %}
+          <label class="day"><input type="checkbox" name="days" value="{{ d }}" {{ 'checked' if d|string in form.getlist('days') }}><span>{{ WEEKDAYS[d] }}</span></label>
+        {% endfor %}
+      </div>
+      <div class="row" style="align-items:center;gap:8px;margin-bottom:12px">
+        <label class="sr-only" for="st">Start time</label><input type="time" id="st" name="start_time" value="{{ form.get('start_time', '') }}" style="width:auto" required>
+        <span class="muted">to</span>
+        <label class="sr-only" for="et">End time</label><input type="time" id="et" name="end_time" value="{{ form.get('end_time', '') }}" style="width:auto" required>
+        <button class="btn">Add</button>
+      </div>
+      {% for e in errors %}<div class="field-error" role="alert">{{ e }}</div>{% endfor %}
+    </form>
+  </section>
+
+  <section class="card" style="align-self:start" aria-labelledby="late-title">
+    <h2 id="late-title">Late rule</h2>
+    <form method="post">
+      <input type="hidden" name="action" value="late">
+      <div class="field"><label for="late">Late after (minutes from the scheduled start)</label>
+        <input type="number" id="late" name="late_minutes" min="0" max="120" value="{{ c.late_minutes }}" style="max-width:160px"></div>
+      <button class="btn secondary">Save</button>
+    </form>
+    <p class="small muted" style="margin-bottom:0">Students can tap in from {{ settings.open_early_minutes }} minutes before the class starts. The class closes by itself at the end time; you can also end it early.</p>
+  </section>
+</div>
+{% endblock %}

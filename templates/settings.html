@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Settings</h1><p>Reader, school hours, no-class days and accounts.</p></div></div>
+
+<div class="grid grid-cols-2">
+  <div>
+    <div class="card">
+      <h2>RFID reader</h2>
+      <p style="display:flex;align-items:center;gap:8px;margin-top:0">
+        <span class="dot {{ reader.state }}"></span><b>{{ reader_label }}</b></p>
+      {% if reader.state != 'connected' and reader.message %}<p class="hint" style="margin:-8px 0 14px">{{ reader.message }}</p>{% endif %}
+      <form method="post">
+        <input type="hidden" name="action" value="general">
+        <fieldset class="choice-group">
+          <legend>Reader type</legend>
+          {% for value, title, desc in [
+              ('serial', 'Arduino + RC522', 'The Arduino sends taps to this PC over the USB cable.'),
+              ('acr122u', 'ACS ACR122U (USB NFC reader)', 'Plugs straight into this PC. No Arduino needed. Works in the background, any window.'),
+              ('keyboard', 'Keyboard-type reader', 'A reader that types the card number. Keep the Dashboard or Kiosk window active.')] %}
+          <label class="choice">
+            <input type="radio" name="reader_mode" value="{{ value }}" {{ 'checked' if settings.reader_mode == value or (settings.reader_mode == 'both' and value == 'serial') }}>
+            <span><b>{{ title }}</b><span class="hint" style="display:block;margin:2px 0 0">{{ desc }}</span></span>
+          </label>
+          {% endfor %}
+        </fieldset>
+        <div id="acr-fields" class="field" {{ 'hidden' if settings.reader_mode != 'acr122u' }}>
+          <label>Detected NFC readers</label>
+          {% if not pyscard_ok %}
+            <div class="field-error"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>
+              The pyscard package isn't installed. Close the app and run <b>RFID_Attendance.bat</b> again, or run <span class="mono">pip install pyscard</span>.</div>
+          {% elif pcsc_readers %}
+            <ul style="margin:0;padding-left:20px">{% for r in pcsc_readers %}<li class="mono small">{{ r }}</li>{% endfor %}</ul>
+          {% else %}
+            <div class="hint" style="margin-top:0">None found. Plug in the ACR122U and refresh this page. If Windows asks for a driver, install the ACR122U driver from the ACS website.</div>
+          {% endif %}
+          <div class="hint">Students tap their card on the reader. It beeps once for time in/out, twice if already recorded, three times for an unregistered card.</div>
+        </div>
+        <div id="serial-fields" {{ 'hidden' if settings.reader_mode not in ('serial', 'both') }}>
+        <div class="field"><label for="port">Arduino serial port</label>
+          <select id="port" name="serial_port">
+            <option value="">— Reader disabled —</option>
+            {% for p in ports %}<option value="{{ p.device }}" {{ 'selected' if p.device == settings.serial_port }}>{{ p.device }} — {{ p.description }}</option>{% endfor %}
+            {% if settings.serial_port and settings.serial_port not in ports|map(attribute='device')|list %}
+              <option value="{{ settings.serial_port }}" selected>{{ settings.serial_port }} (not detected)</option>{% endif %}
+          </select>
+          <div class="hint">Plug in the Arduino and refresh this page if it's missing. Close the Arduino IDE Serial Monitor first — only one program can use the port.</div>
+        </div>
+        <div class="field"><label for="portm">…or type the port</label>
+          <input type="text" id="portm" name="serial_port_manual" placeholder="e.g. COM3"></div>
+        </div>
+
+        <h2 style="margin-top:22px">School hours</h2>
+        <div class="row">
+          <div class="field"><label for="ams">Morning starts</label><input type="time" id="ams" name="am_start" value="{{ settings.am_start }}"></div>
+          <div class="field"><label for="ame">Morning ends</label><input type="time" id="ame" name="am_end" value="{{ settings.am_end }}"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="pms">Afternoon starts</label><input type="time" id="pms" name="pm_start" value="{{ settings.pm_start }}"></div>
+          <div class="field"><label for="pme">Afternoon ends</label><input type="time" id="pme" name="pm_end" value="{{ settings.pm_end }}"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="grace">Grace period (minutes)</label><input type="number" id="grace" name="grace_minutes" min="0" max="60" value="{{ settings.grace_minutes }}">
+            <div class="hint">Late after {{ late[0]|time12 }} (morning) and {{ late[1]|time12 }} (afternoon).</div></div>
+          <div class="field"><label for="gap">Ignore double taps within (minutes)</label><input type="number" id="gap" name="min_gap_minutes" min="0" max="30" value="{{ settings.min_gap_minutes }}"></div>
+        </div>
+        <div class="hint" style="margin:-6px 0 14px">Taps before {{ lunch_split|time12 }} (the middle of lunch) count as morning in/out; later taps count as afternoon in/out.</div>
+        <div class="field"><label class="check"><input type="checkbox" name="count_weekends" {{ 'checked' if settings.count_weekends == '1' }}> Saturdays and Sundays are school days</label></div>
+        <div class="row">
+          <button class="btn">Save settings</button>
+        </div>
+      </form>
+      <form method="post" style="margin-top:10px"><input type="hidden" name="action" value="reconnect">
+        <button class="btn secondary">Reconnect reader</button></form>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>School</h2>
+      <p class="muted" style="margin-top:0">Shown on the sidebar, login page, kiosk screen and printed reports.</p>
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="school">
+        <div class="logo-row">
+          <div class="logo-preview" aria-hidden="true">
+            {% if settings.school_logo %}<img src="{{ url_for('branding', name=settings.school_logo) }}" alt="">{% else %}<span>Logo</span>{% endif %}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="field" style="margin-bottom:8px"><label for="logo">School logo</label>
+              <input type="file" id="logo" name="logo" accept="image/png,image/jpeg,image/webp">
+              <div class="hint">PNG, JPG or WebP, square works best.</div></div>
+            {% if settings.school_logo %}<label class="check small"><input type="checkbox" name="logo_remove" value="1"> Remove the current logo</label>{% endif %}
+          </div>
+        </div>
+        <div class="field"><label for="school">School name</label>
+          <input type="text" id="school" name="school_name" value="{{ settings.school_name }}" required></div>
+        <div class="row">
+          <div class="field"><label for="sid">School ID</label><input type="text" id="sid" name="school_id" value="{{ settings.school_id }}" placeholder="e.g. 301234"></div>
+          <div class="field"><label for="sy">School year</label><input type="text" id="sy" name="school_year" value="{{ settings.school_year }}" placeholder="e.g. 2026–2027"></div>
+        </div>
+        <div class="field"><label for="saddr">Address</label><input type="text" id="saddr" name="school_address" value="{{ settings.school_address }}" placeholder="e.g. Brgy. San Jose, Quezon City"></div>
+        <div class="field"><label for="prin">Principal (for "Noted by" on reports)</label><input type="text" id="prin" name="principal_name" value="{{ settings.principal_name }}" placeholder="e.g. Maria L. Santos"></div>
+        <button class="btn">Save school details</button>
+      </form>
+    </div>
+
+    <div class="card" id="kbd-card" {{ 'hidden' if settings.reader_mode not in ('keyboard', 'both') }}>
+      <h2>Test the keyboard reader</h2>
+      <p class="muted" style="margin-top:0">Click the box, then tap a card on the reader. Nothing is recorded here.</p>
+      <div class="field" style="margin:0"><label for="kbd-test">Card number</label>
+        <input type="text" id="kbd-test" class="mono" autocomplete="off" placeholder="Click here, then tap a card"></div>
+      <div class="hint" id="kbd-result" aria-live="polite"></div>
+    </div>
+
+    <div class="card">
+      <h2>Test without a reader</h2>
+      <p class="muted" style="margin-top:0">Simulates a card tap — handy for demos and testing.</p>
+      <form method="post" class="row" style="align-items:flex-end">
+        <input type="hidden" name="action" value="simulate">
+        <div class="field" style="margin:0"><label for="sim">Card UID</label>
+          <input type="text" id="sim" name="uid" class="mono" list="cards" placeholder="e.g. 04A1B2C3">
+          <datalist id="cards">{% for c in cards %}<option value="{{ c.rfid_uid }}">{{ c.name }}</option>{% endfor %}</datalist></div>
+        <button class="btn">Simulate tap</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Change my password</h2>
+      <form method="post"><input type="hidden" name="action" value="password">
+        <div class="row">
+          <div class="field"><label for="cp">Current</label><div class="pw-wrap"><input type="password" id="cp" name="current_password" autocomplete="current-password" required><button type="button" class="pw-toggle" aria-pressed="false" aria-label="Show password">Show</button></div></div>
+          <div class="field"><label for="np">New (6+ characters)</label><div class="pw-wrap"><input type="password" id="np" name="new_password" autocomplete="new-password" required minlength="6"><button type="button" class="pw-toggle" aria-pressed="false" aria-label="Show password">Show</button></div></div>
+        </div>
+        <button class="btn">Change password</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>No-class days</h2>
+      <p class="muted" style="margin-top:0">Holidays and suspensions. Taps are still logged, but these days don't count in reports.</p>
+      <form method="post" class="row" style="align-items:flex-end;margin-bottom:12px">
+        <input type="hidden" name="action" value="holiday_add">
+        <div class="field" style="margin:0"><label for="hol">Date</label><input type="date" id="hol" name="date" required></div>
+        <button class="btn secondary">Add</button>
+      </form>
+      {% if holidays %}
+      <ul class="chip-list">
+        {% for d in holidays|reverse %}
+        <li><span>{{ d|nicedate }}</span>
+          <form method="post" class="inline" data-undo="Removed {{ d|nicedate }} from no-class days"><input type="hidden" name="action" value="holiday_remove"><input type="hidden" name="date" value="{{ d }}">
+            <button class="chip-x" aria-label="Remove {{ d }}">✕</button></form></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="small muted" style="margin:0">None yet.</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Accounts</h2>
+      <table style="margin-bottom:14px">
+        <thead><tr><th>Username</th><th>Name</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+        {% for t in teachers %}
+          <tr><td>{{ t.username }}</td><td>{{ t.full_name }}</td>
+            <td class="actions">{% if t.id != me %}
+              <form class="inline" method="post" data-undo="Account “{{ t.username }}” deleted">
+                <input type="hidden" name="action" value="delete_teacher"><input type="hidden" name="teacher_id" value="{{ t.id }}">
+                <button class="btn sm danger" aria-label="Delete account {{ t.username }}">Delete</button></form>{% else %}<span class="muted small">you</span>{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <form method="post"><input type="hidden" name="action" value="add_teacher">
+        <div class="row">
+          <div class="field"><label for="tu">Username</label><input type="text" id="tu" name="username" required></div>
+          <div class="field"><label for="tn">Full name</label><input type="text" id="tn" name="full_name" required></div>
+        </div>
+        <div class="field"><label for="tp">Password</label><div class="pw-wrap"><input type="password" id="tp" name="password" autocomplete="new-password" required minlength="6"><button type="button" class="pw-toggle" aria-pressed="false" aria-label="Show password">Show</button></div></div>
+        <button class="btn secondary">Add account</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Show/hide the parts that apply to the chosen reader type
+document.querySelectorAll('input[name=reader_mode]').forEach(r => r.addEventListener('change', () => {
+  const mode = document.querySelector('input[name=reader_mode]:checked').value;
+  document.getElementById('serial-fields').hidden = mode !== 'serial';
+  document.getElementById('acr-fields').hidden = mode !== 'acr122u';
+  document.getElementById('kbd-card').hidden = mode !== 'keyboard';
+}));
+// Keyboard reader test: measure how fast the characters arrive
+const box = document.getElementById('kbd-test'), out = document.getElementById('kbd-result');
+let first = 0, last = 0;
+box.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = box.value.trim();
+    if (!v) return;
+    const ms = last - first, per = v.length > 1 ? Math.round(ms / (v.length - 1)) : 0;
+    const reader = v.length >= 4 && per <= 80;
+    out.innerHTML = `Read <span class="mono">${ui.esc(v.toUpperCase())}</span> (${v.length} characters, ${per} ms apart). ` +
+      (reader ? '<b style="color:var(--present-ink)">✓ Looks like the reader. Taps will be recorded.</b>'
+              : '<b style="color:var(--absent-ink)">That was typed too slowly to be the reader.</b>');
+    box.value = ''; first = 0;
+    return;
+  }
+  if (e.key.length === 1) { const t = Date.now(); if (!first || !box.value) first = t; last = t; }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ s.first_name }} {{ s.last_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="person" style="gap:16px">
+    {% if s.photo %}<img class="profile-photo" src="{{ url_for('photo', name=s.photo) }}" alt="Photo of {{ s.first_name }} {{ s.last_name }}">{% endif %}
+    <div><nav class="crumbs no-print" aria-label="Breadcrumb"><a href="{{ url_for('students') }}">Students</a><span aria-hidden="true">›</span><span aria-current="page">{{ s.last_name }}, {{ s.first_name }}</span></nav>
+    <h1>{{ s.last_name }}, {{ s.first_name }}</h1>
+    <p>{{ s.student_no }} · {{ s.section or 'No section' }} · Card <span class="mono">{{ s.rfid_uid or 'none' }}</span></p></div></div>
+  <div class="filters no-print">
+    <form method="get" class="field"><label for="from">Since</label>
+      <input type="date" id="from" name="from" value="{{ start }}" onchange="this.form.submit()"></form>
+    <a class="btn secondary" href="{{ url_for('student_form', student_id=s.id) }}">Edit</a>
+    <button class="btn secondary" onclick="window.print()">Print</button>
+  </div>
+</div>
+<div class="stats stats-6">
+  <div class="stat total"><div class="label">Attendance rate</div><div class="value">{{ rate ~ '%' if rate is not none else '—' }}</div><div class="sub">{{ rows|length }} school days</div></div>
+  <div class="stat present"><div class="label">Present</div><div class="value">{{ counts.PRESENT }}</div></div>
+  <div class="stat late"><div class="label">Late</div><div class="value">{{ counts.LATE }}</div></div>
+  <div class="stat half"><div class="label">Half day</div><div class="value">{{ counts.HALF }}</div></div>
+  <div class="stat excused"><div class="label">Excused</div><div class="value">{{ counts.EXCUSED }}</div></div>
+  <div class="stat absent"><div class="label">Absent</div><div class="value">{{ counts.ABSENT }}</div></div>
+</div>
+<div class="card table-wrap sticky-head">
+  <table class="sortable log-table">
+    <thead>
+      <tr><th rowspan="2">Date</th><th colspan="2" class="grp">Morning</th><th colspan="2" class="grp">Afternoon</th><th rowspan="2">Day</th><th rowspan="2">Remarks</th></tr>
+      <tr><th data-nosort>In</th><th data-nosort>Out</th><th data-nosort>In</th><th data-nosort>Out</th></tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td data-sort="{{ r.date }}">{{ r.date|nicedate }}</td>
+        <td class="t {{ 'late' if r.am_status == 'LATE' }}">{{ r.am_in|time12 }}</td><td class="t">{{ r.am_out|time12 }}</td>
+        <td class="t {{ 'late' if r.pm_status == 'LATE' }}">{{ r.pm_in|time12 }}</td><td class="t">{{ r.pm_out|time12 }}</td>
+        <td><span class="badge b-{{ r.status }}">{{ 'Half day' if r.status == 'HALF' else r.status|title }}</span></td>
+        <td style="white-space:normal">{{ r.remarks }}</td></tr>
+    {% else %}<tr><td colspan="7" class="empty">No school days in this range.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

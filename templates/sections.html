@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Sections{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Sections</h1><p>The year levels and sections you teach. Each student belongs to one section.</p></div></div>
+<div class="grid grid-2">
+  <div class="card table-wrap">
+    <h2>All sections</h2>
+    <table>
+      <thead><tr><th>Year level</th><th>Section</th><th>Adviser</th><th>Students</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for s in sections %}
+        <tr>
+          <td colspan="3">
+            <form method="post" action="{{ url_for('section_rename', section_id=s.id) }}" class="row" style="gap:6px;flex-wrap:nowrap">
+              <input type="text" name="grade_level" value="{{ s.grade_level }}" style="max-width:110px" aria-label="Year level" placeholder="Year level">
+              <input type="text" name="name" value="{{ s.name }}" style="min-width:100px" aria-label="Section name">
+              <input type="text" name="adviser" value="{{ s.adviser }}" style="min-width:140px" aria-label="Adviser" placeholder="Adviser">
+              <button class="btn sm secondary">Save</button>
+            </form>
+          </td>
+          <td><a href="{{ url_for('students', section=s.id) }}">{{ s.students }}</a></td>
+          <td class="actions">
+            <form class="inline" method="post" action="{{ url_for('section_delete', section_id=s.id) }}" data-undo="Section {{ s.label }} deleted{{ ' · its students are now unassigned' if s.students }}">
+              <button class="btn sm danger" aria-label="Delete section {{ s.label }}">Delete</button></form>
+          </td>
+        </tr>
+      {% else %}<tr><td colspan="5" class="empty">No sections yet. Add one using the form, e.g. <b>Grade 10</b> · <b>Rizal</b>.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card" style="align-self:start">
+    <h2>Add a section</h2>
+    <form method="post">
+      <div class="field"><label for="grade">Year level</label>
+        <input type="text" id="grade" name="grade_level" list="grades" placeholder="e.g. Grade 10">
+        <datalist id="grades">{% for g in ['Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12','1st Year','2nd Year','3rd Year','4th Year'] %}<option value="{{ g }}">{% endfor %}</datalist></div>
+      <div class="field"><label for="name">Section name <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="name" name="name" placeholder="e.g. Rizal" required></div>
+      <div class="field"><label for="adv">Adviser</label>
+        <input type="text" id="adv" name="adviser" placeholder="e.g. Juan P. Reyes">
+        <div class="hint">Printed as "Prepared by" on the monthly report.</div></div>
+      <button class="btn">Add section</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

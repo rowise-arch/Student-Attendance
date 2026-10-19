@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block title %}Today{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Today at the entrance</h1>
+    <p>{{ today|nicedate }}</p>
+  </div>
+  <div class="filters">
+    <form method="get" class="field">
+      <label for="sec">Section</label>
+      <select id="sec" name="section" onchange="this.form.submit()">
+        <option value="">All sections</option>
+        {% for s in sections %}<option value="{{ s.id }}" {{ 'selected' if s.id == section_id }}>{{ s.label }}</option>{% endfor %}
+      </select>
+    </form>
+    <div style="text-align:right"><div class="muted small">Current time</div><div class="clock" id="clock">—</div></div>
+  </div>
+</div>
+
+{% if student_count == 0 %}
+<div class="card">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.5 16.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5M15 10h3.5M15 13h3.5"/></svg>
+    <h2>Welcome! Let's set up</h2>
+    <p>Add your sections and students (or import a list), then link each student's card by tapping it on the Add/Edit student page. Check the school hours in Settings.</p>
+    <div class="row" style="justify-content:center">
+      <a class="btn secondary" href="{{ url_for('sections_page') }}">1. Sections</a>
+      <a class="btn" href="{{ url_for('students') }}">2. Students</a>
+      <a class="btn secondary" href="{{ url_for('settings_page') }}">3. School hours</a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+{% if no_class_day %}
+<div class="notice">
+  <div><b>No classes today.</b> Taps are still logged, but today won't count in reports.</div>
+  <form method="post" action="{{ url_for('today_no_classes') }}"><input type="hidden" name="on" value="0"><button class="btn sm secondary">Undo</button></form>
+</div>
+{% elif not school_day %}
+<div class="notice"><div><b>Weekend.</b> Taps are still logged, but today won't count in reports.</div></div>
+{% endif %}
+
+<div class="period-bar" id="period-bar" aria-live="polite">
+  <div class="period-steps">
+    <span data-p="morning">Morning in</span><span data-p="lunch">Lunch break</span><span data-p="afternoon">Afternoon in</span><span data-p="after">Dismissed</span>
+  </div>
+</div>
+
+<div class="today-top">
+  <div class="finder" role="search">
+    <label for="find" class="sr-only">Find a student</label>
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input type="search" id="find" placeholder="Find a student: where are they right now?" autocomplete="off"
+           aria-controls="find-results" aria-describedby="find-hint">
+    <span class="sr-only" id="find-hint">Type a name, student number or card number</span>
+    <div class="find-results" id="find-results" role="region" aria-label="Search results" hidden></div>
+    <span class="sr-only" id="find-status" role="status"></span>
+  </div>
+  <div class="totals">
+    <span><b id="s-total">–</b> students</span>
+    <span><span class="dot connected" aria-hidden="true"></span><b id="s-inside">–</b> inside now</span>
+  </div>
+</div>
+
+<div class="halves">
+  {% for half, title, start, end, late in [('AM', 'Morning', settings.am_start, settings.am_end, am_late), ('PM', 'Afternoon', settings.pm_start, settings.pm_end, pm_late)] %}
+  <section class="card half-panel" id="hp-{{ half }}" aria-labelledby="hp-{{ half }}-title">
+    <div class="card-head">
+      <h2 id="hp-{{ half }}-title">{{ title }}</h2>
+      <span class="small muted">{{ start|time12 }} – {{ end|time12 }} · late after {{ late|time12 }}</span>
+    </div>
+    <div class="bar big" aria-hidden="true"><span class="in"></span><span class="late"></span></div>
+    <div class="hp-body">
+      <div class="hp-missing">
+        <button type="button" class="m m-missing" data-half="{{ half }}" aria-haspopup="dialog">
+          <div class="v" data-k="MISSING">–</div><div class="l"><span class="ml">Not in yet</span> <span class="chev" aria-hidden="true">›</span></div>
+        </button>
+        <ul class="missing-inline" id="mi-{{ half }}" aria-label="{{ title }}: students not in yet"></ul>
+        <button type="button" class="btn sm secondary mi-all" id="ma-{{ half }}" hidden aria-haspopup="dialog"></button>
+      </div>
+      <div class="hp-metrics">
+        <div class="m m-in"><div class="v" data-k="IN">–</div><div class="l">In</div></div>
+        <div class="m m-late"><div class="v" data-k="LATE">–</div><div class="l">Late</div></div>
+        <div class="m m-out"><div class="v" data-k="OUT">–</div><div class="l">Logged out</div></div>
+      </div>
+    </div>
+    <div class="small muted hp-excused" data-k="EXCUSED"></div>
+  </section>
+  {% endfor %}
+</div>
+
+<dialog id="missing-dlg" class="missing-dialog" aria-labelledby="missing-title">
+  <div class="card-head"><h2 id="missing-title">Not in yet</h2>
+    <button type="button" class="toast-close" onclick="this.closest('dialog').close()" aria-label="Close">✕</button></div>
+  <p class="small muted" id="missing-sub" style="margin-top:-4px"></p>
+  <ul class="missing-list" id="missing-list"></ul>
+  <div class="row no-print" style="justify-content:space-between;margin-top:12px">
+    <a class="btn sm secondary" id="missing-log" href="{{ url_for('attendance') }}">Open in Daily log</a>
+    <button type="button" class="btn sm secondary" onclick="window.print()">Print list</button>
+  </div>
+</dialog>
+
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="feed-title">
+    <div class="card-head"><h2 id="feed-title">Live taps</h2><span class="muted small">updates automatically</span></div>
+    <ul class="feed" id="feed"><li class="empty">No taps yet today. Taps appear here the moment a card is read.</li></ul>
+  </section>
+  <section class="card" aria-labelledby="chart-title">
+    <div class="card-head"><h2 id="chart-title">Last 7 school days</h2>
+      <a class="small" href="{{ url_for('reports', section=section_id) }}">Monthly report</a></div>
+    <div class="chart-wrap">
+      <canvas id="chart" role="img" aria-label="Attendance for the last 7 school days"></canvas>
+      <div class="chart-empty" id="chart-empty" hidden><div><b>No finished school days yet</b><br><span class="small">The chart fills in after the first full day of taps.</span></div></div>
+    </div>
+  </section>
+</div>
+
+{% if school_day %}
+<form method="post" action="{{ url_for('today_no_classes') }}" class="no-print day-setting"
+      onsubmit="return confirm('Mark today as no classes? Taps are still logged, but today will not count in reports. You can undo this on this page.')">
+  <input type="hidden" name="on" value="1">
+  <span class="small muted">Holiday or suspension?</span>
+  <button class="btn sm secondary">Mark today as no classes</button>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script>
+const SECTION = "{{ section_id or '' }}";
+const HAS_STUDENTS = {{ 'true' if student_count else 'false' }};
+const LABELS = {AM_IN: "Morning in", AM_OUT: "Morning out", PM_IN: "Afternoon in", PM_OUT: "Afternoon out",
+                DUP: "Repeat tap", DONE: "Already out", UNKNOWN: "Unknown card"};
+const BADGE = {AM_IN: "IN", PM_IN: "IN", AM_OUT: "OUT", PM_OUT: "OUT", DUP: "DUP", DONE: "DONE", UNKNOWN: "UNKNOWN"};
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const esc = ui.esc, $ = id => document.getElementById(id);
+const t12 = ts => { const [h, m] = ts.slice(11, 16).split(":"); const H = +h % 12 || 12; return `${H}:${m} ${+h < 12 ? "AM" : "PM"}`; };
+
+/* unknown cards: toast in the corner instead of pushing the page */
+const dismissedCards = new Set(JSON.parse((() => { try { return sessionStorage.getItem("dismissedCards") || "[]"; } catch (e) { return "[]"; } })()));
+function showUnknown(u, today) {
+  if (!u || u.scanned_at.slice(0, 10) !== today || dismissedCards.has(u.uid + u.scanned_at)) return;
+  const el = ui.toast({type: "warn", id: "card-" + u.uid, autodismiss: 0, title: "Unregistered card tapped",
+    sub: `Card ${u.uid} at ${t12(u.scanned_at)}`,
+    html: `<div class="t-actions"><a class="btn sm" href="/students/new?uid=${encodeURIComponent(u.uid)}">Register this card</a></div>`});
+  el.querySelector(".toast-close").addEventListener("click", () => {
+    dismissedCards.add(u.uid + u.scanned_at);
+    try { sessionStorage.setItem("dismissedCards", JSON.stringify([...dismissedCards])); } catch (e) {}
+  }, {once: true});
+}
+
+/* live feed: only new rows are inserted */
+let lastId = null;
+function feedItem(f) {
+  const li = document.createElement("li");
+  const av = f.photo ? `<img class="avatar-sm" src="/photos/${encodeURIComponent(f.photo)}" alt="">`
+    : `<span class="avatar-sm" aria-hidden="true">${f.name ? esc(f.name.split(" ").map(w => w[0]).slice(0, 2).join("")) : "?"}</span>`;
+  li.innerHTML = `${av}<span class="badge b-${BADGE[f.result] || "DUP"}">${LABELS[f.result] || f.result}</span>
+    <div class="who"><b>${f.name ? esc(f.name) : "Unregistered card"}</b>
+      <span class="muted small">${f.name ? esc(f.student_no) + (f.section ? " · " + esc(f.section) : "") : '<span class="mono">' + esc(f.uid) + "</span>"}${f.source === "simulator" ? " · simulated" : ""}</span></div>
+    <time class="when">${t12(f.scanned_at)}</time>`;
+  return li;
+}
+function renderFeed(items) {
+  const feed = $("feed");
+  if (!items.length) { if (lastId === null) lastId = 0; return; }
+  if (lastId === null) { feed.innerHTML = ""; items.forEach(f => feed.appendChild(feedItem(f))); }
+  else {
+    const fresh = items.filter(f => f.id > lastId).reverse();
+    if (fresh.length) feed.querySelector(".empty")?.remove();
+    if (fresh.length) {
+      // FLIP: remember where the current rows are, insert the new ones, then glide the
+      // old rows down from their old spot instead of letting them jump.
+      const before = new Map([...feed.children].map(li => [li, li.getBoundingClientRect().top]));
+      const added = fresh.map(f => { const li = feedItem(f); feed.prepend(li); return li; });
+      while (feed.children.length > 25) feed.lastElementChild.remove();
+      if (!reduceMotion) {
+        for (const [li, top] of before) {
+          if (!li.isConnected) continue;
+          const dy = top - li.getBoundingClientRect().top;
+          if (dy) { li.style.transition = "none"; li.style.transform = `translateY(${dy}px)`; }
+        }
+        added.forEach(li => li.classList.add("is-new"));
+        void feed.offsetHeight;
+        requestAnimationFrame(() => {
+          for (const li of before.keys()) { li.style.transition = ""; li.style.transform = ""; }
+          added.forEach(li => li.classList.remove("is-new"));
+        });
+      }
+    }
+  }
+  lastId = Math.max(...items.map(f => f.id));
+}
+
+/* chart: colors validated for color-blind separation; Absent is hatched too */
+let chart = null;
+function hatch(color) {
+  const c = document.createElement("canvas"); c.width = c.height = 8;
+  const g = c.getContext("2d"); g.fillStyle = color; g.fillRect(0, 0, 8, 8);
+  g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(0, 8); g.lineTo(8, 0); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6); g.stroke();
+  return g.createPattern(c, "repeat");
+}
+const token = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function renderChart(week) {
+  const total = week.reduce((n, d) => n + d.PRESENT + d.LATE + d.HALF + d.EXCUSED + d.ABSENT, 0);
+  $("chart-empty").hidden = total > 0;
+  const series = [
+    {label: "Present", key: "PRESENT", color: token("--present")},
+    {label: "Late", key: "LATE", color: token("--late")},
+    {label: "Half day", key: "HALF", color: token("--half")},
+    {label: "Excused", key: "EXCUSED", color: token("--excused")},
+    {label: "Absent", key: "ABSENT", color: token("--absent"), pattern: true},
+  ];
+  const data = {labels: week.map(d => d.date), datasets: series.map(s => ({
+    label: s.label, data: week.map(d => d[s.key]), backgroundColor: s.pattern ? hatch(s.color) : s.color,
+    borderColor: token("--surface"), borderWidth: {top: 2}, borderSkipped: false, maxBarThickness: 36}))};
+  const last = week[week.length - 1];
+  if (last) $("chart").setAttribute("aria-label", `Stacked bars for the last ${week.length} school days. ${last.date}: ${last.PRESENT} present, ${last.LATE} late, ${last.HALF} half day, ${last.EXCUSED} excused, ${last.ABSENT} absent.`);
+  if (chart) { chart.data = data; chart.update("none"); return; }
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = token("--muted");
+  chart = new Chart($("chart"), {type: "bar", data, options: {
+    responsive: true, maintainAspectRatio: false, animation: reduceMotion ? false : {duration: 300},
+    interaction: {mode: "index", intersect: false},
+    scales: {x: {stacked: true, grid: {display: false}, border: {display: false}},
+             y: {stacked: true, beginAtZero: true, ticks: {precision: 0}, grid: {color: token("--border")}, border: {display: false},
+                 title: {display: true, text: "Students"}}},
+    plugins: {legend: {position: "bottom", labels: {boxWidth: 12, boxHeight: 12, padding: 14}},
+              tooltip: {backgroundColor: token("--text"), padding: 10, boxPadding: 4,
+                        callbacks: {footer: items => `Total: ${items.reduce((n, i) => n + i.parsed.y, 0)}`}}}}});
+}
+
+const avatarOf = m => m.photo ? `<img class="avatar-sm" src="/photos/${encodeURIComponent(m.photo)}" alt="">`
+  : `<span class="avatar-sm" aria-hidden="true">${esc(m.name.split(", ")[1]?.[0] || "")}${esc(m.name[0])}</span>`;
+const INLINE_MAX = 6;
+function renderInline(half, h) {
+  const ul = $("mi-" + half), all = $("ma-" + half), list = MISSING[half] || [];
+  if (!h.started) { ul.innerHTML = ""; all.hidden = true; return; }
+  ul.innerHTML = list.length ? list.slice(0, INLINE_MAX).map(m => `
+    <li><a href="/students/${m.id}">${avatarOf(m)}
+      <span class="who"><b>${esc(m.name)}</b><span class="small muted">${esc(m.section)}${m.note ? " · " + esc(m.note) : ""}</span></span></a></li>`).join("")
+    : '<li class="all-clear">Everyone is accounted for.</li>';
+  all.hidden = list.length <= INLINE_MAX;
+  all.textContent = `See all ${list.length}`;
+}
+["AM", "PM"].forEach(half => $("ma-" + half).addEventListener("click", () => document.querySelector('.m-missing[data-half="' + half + '"]').click()));
+
+const PERIOD_ORDER = ["before", "morning", "lunch", "afternoon", "after"];
+let MISSING = {AM: [], PM: []}, COUNTS = null;
+
+/* who hasn't tapped in */
+document.querySelectorAll(".m-missing").forEach(btn => btn.addEventListener("click", () => {
+  const half = btn.dataset.half, list = MISSING[half] || [];
+  const title = btn.querySelector(".ml").textContent;
+  $("missing-title").textContent = `${half === "AM" ? "Morning" : "Afternoon"}: ${title.toLowerCase()} (${list.length})`;
+  $("missing-sub").textContent = list.length ? "Click a name to see their record." : "";
+  $("missing-list").innerHTML = list.length ? list.map(m => `
+    <li><a href="/students/${m.id}">
+      ${avatarOf(m)}
+      <span class="who"><b>${esc(m.name)}</b><span class="small muted">${esc(m.student_no)} · ${esc(m.section)}${m.note ? " · " + esc(m.note) : ""}</span></span></a></li>`).join("")
+    : '<li class="empty">Everyone is accounted for.</li>';
+  $("missing-dlg").showModal();
+}));
+
+/* find a student */
+const findInput = $("find"), findBox = $("find-results");
+let findTimer = null, findSeq = 0;
+const WHERE_CLASS = {in: "in", out: "out", absent: "absent", excused: "excused"};
+async function runFind() {
+  const q = findInput.value.trim(), seq = ++findSeq;
+  if (q.length < 2) { findBox.hidden = true; return; }
+  try {
+    const res = await fetch("/api/find?q=" + encodeURIComponent(q));
+    if (!res.ok) throw new Error("find " + res.status);
+    const d = await res.json();
+    if (seq !== findSeq) return;
+    findBox.innerHTML = d.results.length ? d.results.map((r, i) => `
+      <a class="find-item" href="/students/${r.id}" id="fr-${i}">
+        ${r.photo ? `<img class="avatar-sm" src="/photos/${encodeURIComponent(r.photo)}" alt="">` : `<span class="avatar-sm" aria-hidden="true">${esc(r.first_name[0])}${esc(r.last_name[0])}</span>`}
+        <span class="who"><b>${esc(r.last_name)}, ${esc(r.first_name)}</b><span class="small muted">${esc(r.student_no)}${r.section ? " · " + esc(r.section) : ""}</span></span>
+        <span class="where where-${WHERE_CLASS[r.where]}">${esc(r.where_text)}</span>
+      </a>`).join("") : '<div class="find-empty">No student matches that.</div>';
+    findBox.hidden = false;
+    $("find-status").textContent = d.results.length ? `${d.results.length} student${d.results.length === 1 ? "" : "s"} found` : "No student matches that";
+  } catch (e) {
+    if (seq !== findSeq) return;
+    findBox.innerHTML = '<div class="find-empty">Couldn\'t search just now. Check the connection and try again.</div>';
+    findBox.hidden = false;
+    $("find-status").textContent = "Search failed";
+  }
+}
+findInput.addEventListener("input", () => { clearTimeout(findTimer); findTimer = setTimeout(runFind, 200); });
+findInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") { const first = findBox.querySelector("a"); if (first) { e.preventDefault(); location.href = first.href; } }
+  if (e.key === "Escape") { findInput.value = ""; findBox.hidden = true; }
+  if (e.key === "ArrowDown") { const first = findBox.querySelector("a"); if (first) { e.preventDefault(); first.focus(); } }
+});
+findBox.addEventListener("keydown", e => {
+  const items = [...findBox.querySelectorAll("a")], i = items.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" && i < items.length - 1) { e.preventDefault(); items[i + 1].focus(); }
+  if (e.key === "ArrowUp") { e.preventDefault(); (i > 0 ? items[i - 1] : findInput).focus(); }
+  if (e.key === "Escape") { findBox.hidden = true; findInput.focus(); }
+});
+document.addEventListener("click", e => { if (!e.target.closest(".finder")) findBox.hidden = true; });
+const conn = ui.watch();
+async function refresh() {
+  try {
+    const res = await fetch("/api/today" + (SECTION ? "?section=" + SECTION : ""));
+    if (res.status === 401) { location.href = "/login"; return; }
+    if (!res.ok) throw new Error("today " + res.status);
+    const d = await res.json();
+    $("clock").textContent = d.now;
+    const dot = $("reader-dot"); dot.className = "dot " + d.reader.state; $("reader-text").textContent = d.reader_label;
+    showUnknown(d.unknown, d.today);
+    conn.ok();
+    if (!HAS_STUDENTS) return;
+    const c = d.counts;
+    MISSING = d.missing; COUNTS = c;
+    ui.setNumber($("s-total"), c.TOTAL); ui.setNumber($("s-inside"), c.INSIDE);
+    for (const half of ["AM", "PM"]) {
+      const h = c[half], panel = $("hp-" + half);
+      panel.querySelectorAll("[data-k]").forEach(el => {
+        if (el.dataset.k === "EXCUSED") el.textContent = h.EXCUSED ? `${h.EXCUSED} excused` : "";
+        else ui.setNumber(el, h[el.dataset.k]);
+      });
+      const ended = half === "AM" ? ["lunch", "afternoon", "after"].includes(c.PERIOD) : c.PERIOD === "after";
+      panel.querySelector(".ml").textContent = !h.started ? "Not yet" : ended ? "Absent" : "Not in yet";
+      panel.querySelector(".m-missing").classList.toggle("is-alert", h.started && h.MISSING > 0);
+      panel.classList.toggle("is-now", (half === "AM" && c.PERIOD === "morning") || (half === "PM" && c.PERIOD === "afternoon"));
+      // The half that matters right now leads the page; the other stays as a compact summary
+      const lead = (half === "AM") === ["before", "morning"].includes(c.PERIOD);
+      panel.classList.toggle("is-lead", lead); panel.classList.toggle("is-side", !lead);
+      panel.querySelector(".m-missing").classList.toggle("is-clear", h.started && h.MISSING === 0);
+      renderInline(half, h);
+      const total = Math.max(1, c.TOTAL);
+      panel.querySelector(".bar .in").style.width = `${100 * (h.IN - h.LATE) / total}%`;
+      panel.querySelector(".bar .late").style.width = `${100 * h.LATE / total}%`;
+    }
+    const idx = PERIOD_ORDER.indexOf(c.PERIOD);
+    document.querySelectorAll(".period-steps span").forEach(sp => {
+      const i = PERIOD_ORDER.indexOf(sp.dataset.p);
+      sp.className = i < idx ? "done" : i === idx ? "now" : "";
+    });
+    renderFeed(d.feed);
+    renderChart(d.week);
+    conn.ok();
+  } catch (e) { conn.fail(); }   // server restarting or network down: the banner appears if it lasts
+}
+/* Taps are pushed over /api/stream the moment they're saved; the timer is a safety net
+   (and keeps the clock and reader status fresh). Only one request runs at a time. */
+let busy = null, again = false;
+function update() {
+  if (busy) { again = true; return busy; }
+  busy = refresh().finally(() => { busy = null; if (again) { again = false; update(); } });
+  return busy;
+}
+let live = false;
+if (window.EventSource) {
+  const es = new EventSource("/api/stream");
+  es.addEventListener("scan", update);
+  es.onopen = () => { live = true; };
+  es.onerror = () => { live = false; };
+  addEventListener("pagehide", () => es.close());
+}
+update();
+setInterval(() => { if (!document.hidden) update(); }, 2000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) update(); });
+document.addEventListener("rfid-result", update);
+</script>
+{% endblock %}

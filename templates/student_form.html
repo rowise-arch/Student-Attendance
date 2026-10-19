@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if editing else 'Add' }} student{% endblock %}
+{% set errors = errors or {} %}
+{% set first_error = (['student_no','first_name','last_name','rfid_uid']|select('in', errors)|list|first) %}
+{% macro err(name) -%}
+  {% if errors.get(name) %}<div class="field-error" id="{{ name }}-error" role="alert">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>{{ errors[name] }}</div>{% endif %}
+{%- endmacro %}
+{% macro a11y(name) -%}
+  {% if errors.get(name) %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}{% if first_error == name %} autofocus{% endif %}
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('students') }}">Students</a><span aria-hidden="true">›</span>{% if editing %}<a href="{{ url_for('student_profile', student_id=student_id) }}">{{ student.last_name if student else "" }}, {{ student.first_name if student else "" }}</a><span aria-hidden="true">›</span>{% endif %}<span aria-current="page">{{ 'Edit' if editing else 'Add student' }}</span></nav>
+    <h1>{{ 'Edit student' if editing else 'Add student' }}</h1>
+    <p>Tap the student's card on the reader and the card number fills in by itself.</p></div>
+  <a class="btn secondary" href="{{ url_for('students') }}">← Back to students</a>
+</div>
+<div class="card" style="max-width:860px">
+  <form method="post" novalidate>
+    {% set current_photo = url_for('photo', name=student.photo) if student and student.photo and not remove_photo else '' %}
+    <div class="form-with-photo">
+    <div class="photo-field">
+      <div class="photo-label" id="photo-label">Photo</div>
+      <div class="photo-frame" id="photo-frame" data-has="{{ '1' if pending_photo or current_photo else '0' }}">
+        <img id="photo-preview" alt="Student photo" src="{{ pending_photo or current_photo }}" {{ 'hidden' if not (pending_photo or current_photo) }}>
+        <svg id="photo-empty" {{ 'hidden' if pending_photo or current_photo }} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="12" cy="9" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+      </div>
+      <input type="hidden" name="photo_data" id="photo-data" value="{{ pending_photo }}">
+      <input type="hidden" name="photo_remove" id="photo-remove" value="{{ '1' if remove_photo else '0' }}">
+      <input type="file" id="photo-file" accept="image/*" hidden>
+      <div class="photo-actions" role="group" aria-labelledby="photo-label">
+        <button type="button" class="btn sm secondary" id="photo-camera">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Take photo</button>
+        <button type="button" class="btn sm secondary" id="photo-upload">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>Upload</button>
+        <button type="button" class="btn sm danger" id="photo-clear" {{ 'hidden' if not (pending_photo or current_photo) }}>Remove</button>
+      </div>
+    </div>
+    <div class="photo-side">
+    <div class="row">
+      <div class="field{{ ' has-error' if errors.student_no }}"><label for="no">Student number <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="no" name="student_no" required value="{{ student.student_no if student else '' }}"{{ a11y('student_no') }}>
+        {{ err('student_no') }}</div>
+      <div class="field"><label for="sec">Section</label>
+        <select id="sec" name="section_id"><option value="">— None —</option>
+          {% for s in sections %}<option value="{{ s.id }}" {{ 'selected' if student and student.section_id == s.id }}>{{ s.label }}</option>{% endfor %}
+        </select>
+        {% if not sections %}<div class="hint">No sections yet. <a href="{{ url_for('sections_page') }}">Add one</a>.</div>{% endif %}
+      </div>
+    </div>
+    <div class="row">
+      <div class="field{{ ' has-error' if errors.first_name }}"><label for="fn">First name <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="fn" name="first_name" required autocomplete="off" value="{{ student.first_name if student else '' }}"{{ a11y('first_name') }}>
+        {{ err('first_name') }}</div>
+      <div class="field{{ ' has-error' if errors.last_name }}"><label for="ln">Last name <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="ln" name="last_name" required autocomplete="off" value="{{ student.last_name if student else '' }}"{{ a11y('last_name') }}>
+        {{ err('last_name') }}</div>
+    </div>
+    </div>
+    </div>
+    <div class="field{{ ' has-error' if errors.rfid_uid }}"><label for="uid">RFID card</label>
+      <div class="scan-box" id="scan-box" data-state="{{ 'waiting' if reader.state in ('connected', 'keyboard') else 'offline' }}" aria-live="polite">
+        <span class="scan-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="13" height="9" rx="1.6"/><circle cx="7" cy="10.5" r="1.6"/><path d="M10.5 9.5h3M10.5 11.5h2"/><path d="M18.5 8.5a5 5 0 0 1 0 7M20.5 6.5a8 8 0 0 1 0 11"/></svg>
+        </span>
+        <div class="scan-text">
+          <b id="scan-title">{% if reader.state in ('connected', 'keyboard') %}Tap the student's card on the reader{% else %}Reader not connected{% endif %}</b>
+          <div class="small" id="scan-sub">{% if reader.state in ('connected', 'keyboard') %}The card number fills in automatically. Taps on this page don't record attendance.{% else %}{{ reader_label }}. You can still type the card number below.{% endif %}</div>
+        </div>
+      </div>
+      <div class="row" style="align-items:center;margin-top:10px">
+        <input type="text" id="uid" name="rfid_uid" class="mono" style="flex:1;min-width:180px" autocomplete="off"
+               value="{{ (student.rfid_uid or '') if student else request.args.get('uid', '') }}" placeholder="Card number, e.g. 04A1B2C3" aria-label="RFID card number" data-rfid-target{{ a11y('rfid_uid') }}>
+        <button type="button" class="btn secondary" id="clear-uid">Clear</button>
+      </div>
+      {{ err('rfid_uid') }}
+      <div class="field-error" id="uid-owner" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4M12 17h.01"/></svg><span></span></div>
+    </div>
+    <p class="small muted" style="margin:0 0 16px"><span class="req">*</span> Required</p>
+    <button class="btn">Save student</button>
+  </form>
+</div>
+<dialog id="camera" class="camera-dialog" aria-labelledby="cam-title">
+  <h2 id="cam-title">Take a photo</h2>
+  <div class="camera-stage">
+    <video id="cam-video" autoplay playsinline muted></video>
+    <canvas id="cam-shot" hidden></canvas>
+    <div class="camera-guide" aria-hidden="true"></div>
+    <div class="camera-msg" id="cam-msg" hidden></div>
+  </div>
+  <div class="row" style="align-items:center;justify-content:space-between;margin-top:14px">
+    <div>
+      <label class="sr-only" for="cam-select">Camera</label>
+      <select id="cam-select" style="width:auto;min-width:180px" hidden></select>
+    </div>
+    <div class="row" style="gap:8px">
+      <button type="button" class="btn secondary" id="cam-cancel">Cancel</button>
+      <button type="button" class="btn secondary" id="cam-retake" hidden>Retake</button>
+      <button type="button" class="btn" id="cam-snap">Capture</button>
+      <button type="button" class="btn" id="cam-use" hidden>Use this photo</button>
+    </div>
+  </div>
+  <p class="small muted" style="margin:10px 0 0">Center the student's face inside the box: that square is what gets saved. Photos stay on this PC (in the photos folder).</p>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='photo.js') }}"></script>
+<script>
+const STUDENT_ID = {{ student_id or 'null' }};
+const box = document.getElementById("scan-box"), title = document.getElementById("scan-title"),
+      sub = document.getElementById("scan-sub"), input = document.getElementById("uid"),
+      ownerMsg = document.getElementById("uid-owner");
+let baseline = null;
+
+function setState(state, t, s) { box.dataset.state = state; title.textContent = t; sub.textContent = s; }
+function showOwner(owner) {
+  const mine = owner && STUDENT_ID && owner.id === STUDENT_ID;
+  ownerMsg.hidden = !owner || mine;
+  if (owner && !mine) ownerMsg.querySelector("span").textContent =
+    `This card already belongs to ${owner.name}. Use a different card, or remove it from ${owner.name} first.`;
+  return owner && !mine;
+}
+function filled(uid, owner) {
+  input.value = uid;
+  input.classList.remove("just-filled"); void input.offsetWidth; input.classList.add("just-filled");
+  if (showOwner(owner)) setState("warn", `Card ${uid} is already registered`, "Tap a different card for this student.");
+  else setState("got", `Card read: ${uid}`, "Tap another card to replace it, or click Save student.");
+}
+
+async function poll() {
+  if (document.hidden) return;                       // registration mode only while this page is visible
+  try {
+    const res = await fetch("/api/capture");
+    if (res.status === 401) { location.href = "/login"; return; }
+    const d = await res.json();
+    if (baseline === null) { baseline = d.seq; }       // ignore taps from before this page opened
+    else if (d.seq > baseline && d.last) { baseline = d.seq; filled(d.last.uid, d.owner); return; }
+    if (box.dataset.state === "offline" && (d.reader === "connected" || d.reader === "keyboard"))
+      setState("waiting", "Tap the student's card on the reader", "The card number fills in automatically. Taps on this page don't record attendance.");
+    else if (box.dataset.state === "waiting" && d.reader !== "connected" && d.reader !== "keyboard")
+      setState("offline", "Reader not connected", `${d.reader_label}. You can still type the card number below.`);
+  } catch (e) {}
+}
+poll(); setInterval(poll, 700);
+document.addEventListener("visibilitychange", poll);
+// Leaving the page ends registration mode right away
+window.addEventListener("pagehide", () => { try { fetch("/api/capture", {method: "DELETE", keepalive: true}); } catch (e) {} });
+
+document.getElementById("clear-uid").onclick = () => {
+  input.value = ""; ownerMsg.hidden = true; input.focus();
+  setState("waiting", "Tap the student's card on the reader", "The card number fills in automatically. Taps on this page don't record attendance.");
+};
+// Keyboard-type reader: fill in the number instead of recording attendance
+window.onRfidScan = uid => filled(uid, null);
+</script>
+{% endblock %}

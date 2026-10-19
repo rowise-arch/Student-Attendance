@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Classes & schedule{% endblock %}
+{% set errors = errors or {} %}
+{% macro day_picker(prefix, selected) -%}
+  <div class="day-picker" role="group" aria-label="Days">
+    {% for d in range(7) %}
+      <label class="day"><input type="checkbox" name="days" value="{{ d }}" {{ 'checked' if d|string in selected }}><span>{{ WEEKDAYS[d] }}</span></label>
+    {% endfor %}
+  </div>
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Classes & schedule</h1><p>Set this up once at the start of the semester. Each class opens and closes by itself at its weekly times.</p></div>
+</div>
+
+<section class="card term-card" aria-labelledby="term-title">
+  <div>
+    <div class="small muted" id="term-title">Current semester</div>
+    <div class="term-name">{{ term.name }}</div>
+    <div class="muted">{{ term.start_date|nicedate }} – {{ term.end_date|nicedate }}</div>
+  </div>
+  <div class="row">
+    {% if terms|length > 1 %}
+    <form method="post" action="{{ url_for('semester_switch') }}" class="row" style="gap:6px">
+      <label class="sr-only" for="switch">Switch semester</label>
+      <select id="switch" name="term_id" onchange="this.form.submit()" style="width:auto">
+        {% for t in terms %}<option value="{{ t.id }}" {{ 'selected' if t.id == term.id }}>{{ t.name }}</option>{% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    <button class="btn secondary" type="button" onclick="document.getElementById('term-edit').showModal()">Edit dates</button>
+    <button class="btn secondary" type="button" onclick="document.getElementById('term-new').showModal()">New semester</button>
+  </div>
+</section>
+
+<section class="card table-wrap" aria-labelledby="list-title">
+  <h2 id="list-title">Your classes this semester</h2>
+  <table class="sortable">
+    <thead><tr><th>Subject</th><th>Section</th><th>Weekly schedule</th><th>Students</th><th>Late after</th><th>Meetings</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for c in classes %}
+      <tr>
+        <td><a href="{{ url_for('class_detail', class_id=c.id) }}"><b>{{ c.subject }}</b></a></td>
+        <td>{{ c.grade_level ~ ' ' if c.grade_level }}{{ c.section }}</td>
+        <td style="white-space:normal;min-width:190px">{% if c.schedule %}{{ c.schedule }}{% else %}<span class="badge b-LATE">No times set</span>{% endif %}</td>
+        <td data-sort="{{ c.students }}"><a href="{{ url_for('students', section=c.section_id) }}">{{ c.students }}</a></td>
+        <td data-sort="{{ c.late_minutes }}">{{ c.late_minutes }} min</td>
+        <td data-sort="{{ c.sessions_held }}"><a href="{{ url_for('records', **{'class': c.id}) }}">{{ c.sessions_held }}</a></td>
+        <td class="actions">
+          <a class="btn sm secondary" href="{{ url_for('class_detail', class_id=c.id) }}">Edit schedule</a>
+          <form class="inline" method="post" action="{{ url_for('class_delete', class_id=c.id) }}">
+            <button type="button" class="btn sm danger hold" aria-label="Delete class and its records (press and hold)"><span>Hold to delete</span><span class="hold-fill" aria-hidden="true">Hold to delete</span></button></form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No classes this semester yet. Add one below.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card" aria-labelledby="add-title">
+  <h2 id="add-title">Add a class</h2>
+  {% if not sections %}
+    <p class="muted">First <a href="{{ url_for('sections_page') }}">add the sections</a> you teach.</p>
+  {% else %}
+  <form method="post" novalidate>
+    <div class="row">
+      <div class="field{{ ' has-error' if errors.subject }}"><label for="subject">Subject <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="subject" name="subject" list="subject-list" value="{{ form.get('subject', '') }}" placeholder="e.g. Mathematics 10" autocomplete="off"
+               {% if errors.subject %}aria-invalid="true" aria-describedby="subject-error" autofocus{% endif %}>
+        <datalist id="subject-list">{% for s in subjects %}<option value="{{ s.name }}">{% endfor %}</datalist>
+        {% if errors.subject %}<div class="field-error" id="subject-error" role="alert">{{ errors.subject }}</div>{% endif %}
+      </div>
+      <div class="field{{ ' has-error' if errors.section_id }}"><label for="sec">Section <span class="req" aria-hidden="true">*</span></label>
+        <select id="sec" name="section_id" {% if errors.section_id %}aria-invalid="true" aria-describedby="sec-error"{% endif %}>
+          <option value="">Choose…</option>
+          {% for s in sections %}<option value="{{ s.id }}" {{ 'selected' if form.get('section_id')|string == s.id|string }}>{{ s.label }} ({{ s.students }})</option>{% endfor %}
+        </select>
+        {% if errors.section_id %}<div class="field-error" id="sec-error" role="alert">{{ errors.section_id }}</div>{% endif %}
+      </div>
+      <div class="field" style="max-width:180px"><label for="late">Late after (minutes)</label>
+        <input type="number" id="late" name="late_minutes" min="0" max="120" value="{{ form.get('late_minutes') or settings.default_late_minutes }}"></div>
+    </div>
+    <fieldset class="field{{ ' has-error' if errors.slots }}" style="border:0;padding:0;margin:0 0 16px">
+      <legend style="font-weight:600;font-size:14px;margin-bottom:6px">Meets every <span class="req" aria-hidden="true">*</span></legend>
+      <div class="row" style="align-items:center">
+        {{ day_picker('add', form.getlist('days') if form else []) }}
+        <div class="row" style="align-items:center;gap:8px">
+          <label class="sr-only" for="st">Start time</label><input type="time" id="st" name="start_time" value="{{ form.get('start_time', '') }}" style="width:auto">
+          <span class="muted">to</span>
+          <label class="sr-only" for="et">End time</label><input type="time" id="et" name="end_time" value="{{ form.get('end_time', '') }}" style="width:auto">
+        </div>
+      </div>
+      {% if errors.slots %}<div class="field-error" role="alert">{{ errors.slots }}</div>{% endif %}
+      <div class="hint">Different times on different days (e.g. Tue 1:00 and Thu 3:00)? Add one time here, then add the rest on the class's Edit schedule page.</div>
+    </fieldset>
+    <button class="btn">Add class</button>
+  </form>
+  {% endif %}
+</section>
+
+<dialog id="term-edit" aria-labelledby="te-title">
+  <form method="post" action="{{ url_for('semester_save') }}">
+    <h2 id="te-title">Edit semester</h2>
+    <div class="field"><label for="te-name">Name</label><input type="text" id="te-name" name="name" value="{{ term.name }}" required></div>
+    <div class="row">
+      <div class="field"><label for="te-start">First day of classes</label><input type="date" id="te-start" name="start_date" value="{{ term.start_date }}" required></div>
+      <div class="field"><label for="te-end">Last day of classes</label><input type="date" id="te-end" name="end_date" value="{{ term.end_date }}" required></div>
+    </div>
+    <div class="row" style="justify-content:flex-end">
+      <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button><button class="btn">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="term-new" aria-labelledby="tn-title">
+  <form method="post" action="{{ url_for('semester_save') }}">
+    <input type="hidden" name="action" value="new">
+    <h2 id="tn-title">Start a new semester</h2>
+    <p class="muted" style="margin-top:-6px">Records from {{ term.name }} are kept. Switch back to it any time.</p>
+    <div class="field"><label for="tn-name">Name</label><input type="text" id="tn-name" name="name" placeholder="e.g. 2nd Semester 2026–2027" required></div>
+    <div class="row">
+      <div class="field"><label for="tn-start">First day of classes</label><input type="date" id="tn-start" name="start_date" required></div>
+      <div class="field"><label for="tn-end">Last day of classes</label><input type="date" id="tn-end" name="end_date" required></div>
+    </div>
+    <div class="field"><label class="check"><input type="checkbox" name="copy" value="1"> Copy my classes and weekly schedule from {{ term.name }}</label></div>
+    <div class="row" style="justify-content:flex-end">
+      <button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancel</button><button class="btn">Create semester</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

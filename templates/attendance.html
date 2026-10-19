@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Daily log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Daily log</h1>
+    <p>{{ start|nicedate }}{% if end != start %} – {{ end|nicedate }}{% endif %} · {{ total }} row{{ '' if total == 1 else 's' }}</p></div>
+  <div class="row no-print">
+    <button class="btn secondary" onclick="openEdit()">+ Manual entry</button>
+    <a class="btn secondary" href="{{ url_for('attendance_export', **args) }}">Export CSV</a>
+    <button class="btn secondary" onclick="window.print()">Print</button>
+  </div>
+</div>
+
+<div class="card">
+  <form class="filters" method="get" style="margin-bottom:14px">
+    <div class="field"><label for="from">From</label><input type="date" id="from" name="from" value="{{ start }}"></div>
+    <div class="field"><label for="to">To</label><input type="date" id="to" name="to" value="{{ end }}"></div>
+    <div class="field"><label for="sec">Section</label>
+      <select id="sec" name="section"><option value="">All sections</option>
+        {% for s in sections %}<option value="{{ s.id }}" {{ 'selected' if s.id == section_id }}>{{ s.label }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="st">Day status</label>
+      <select id="st" name="status"><option value="">All</option>
+        {% for k, lbl in [('PRESENT','Present'),('LATE','Late'),('HALF','Half day'),('EXCUSED','Excused'),('ABSENT','Absent')] %}<option value="{{ k }}" {{ 'selected' if status == k }}>{{ lbl }}</option>{% endfor %}
+      </select></div>
+    <div class="field" style="flex:1"><label for="q">Jump to student</label><input type="search" id="q" name="q" value="{{ search }}" placeholder="Name or student no."></div>
+    <button class="btn">Apply</button>
+  </form>
+
+  <div class="row small" style="margin-bottom:12px;gap:8px">
+    <span class="badge b-PRESENT">Present {{ counts.PRESENT }}</span>
+    <span class="badge b-LATE">Late {{ counts.LATE }}</span>
+    <span class="badge b-HALF">Half day {{ counts.HALF }}</span>
+    <span class="badge b-EXCUSED">Excused {{ counts.EXCUSED }}</span>
+    <span class="badge b-ABSENT">Absent {{ counts.ABSENT }}</span>
+  </div>
+
+  <div class="table-wrap sticky-head">
+  <table class="sortable log-table">
+    <thead>
+      <tr><th rowspan="2">Date</th><th rowspan="2">Student</th><th rowspan="2">Section</th>
+        <th colspan="2" class="grp">Morning</th><th colspan="2" class="grp">Afternoon</th>
+        <th rowspan="2">Day</th><th rowspan="2">Remarks</th><th rowspan="2" class="no-print" data-nosort><span class="sr-only">Actions</span></th></tr>
+      <tr><th data-nosort>In</th><th data-nosort>Out</th><th data-nosort>In</th><th data-nosort>Out</th></tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td data-sort="{{ r.date }}">{{ r.date }}</td>
+        <td data-sort="{{ r.name }}"><div class="person">
+          {% if r.photo %}<img class="avatar-sm" src="{{ url_for('photo', name=r.photo) }}" alt="" loading="lazy">{% else %}<span class="avatar-sm" aria-hidden="true">{{ r.name.split(', ')[1][:1] if ', ' in r.name else '' }}{{ r.name[:1] }}</span>{% endif %}
+          <div><a href="{{ url_for('student_profile', student_id=r.student_id) }}">{{ r.name }}</a>
+            <div class="small muted">{{ r.student_no }}{% if r.inside %} · <span class="inside-chip">Inside now</span>{% endif %}</div></div></div></td>
+        <td>{{ r.section }}</td>
+        <td class="t {{ 'late' if r.am_status == 'LATE' }}">{% if r.am_in %}{{ r.am_in|time12 }}{% elif r.am_status == 'EXCUSED' %}<span class="badge b-EXCUSED">Excused</span>{% else %}—{% endif %}</td>
+        <td class="t">{{ r.am_out|time12 }}</td>
+        <td class="t {{ 'late' if r.pm_status == 'LATE' }}">{% if r.pm_in %}{{ r.pm_in|time12 }}{% elif r.pm_status == 'EXCUSED' %}<span class="badge b-EXCUSED">Excused</span>{% elif r.pm_status == 'PENDING' %}<span class="muted small">later</span>{% else %}—{% endif %}</td>
+        <td class="t">{{ r.pm_out|time12 }}</td>
+        <td><span class="badge b-{{ r.status }}">{{ 'Half day' if r.status == 'HALF' else r.status|title }}</span></td>
+        <td style="white-space:normal">{{ r.remarks }}</td>
+        <td class="actions no-print"><button class="btn sm secondary" type="button"
+          onclick='openEdit({{ {"student_id": r.student_id, "date": r.date, "am_in": (r.am_in or "")[:5], "am_out": (r.am_out or "")[:5], "pm_in": (r.pm_in or "")[:5], "pm_out": (r.pm_out or "")[:5], "am_status": r.am_status, "pm_status": r.pm_status, "remarks": r.remarks}|tojson }})'>Edit</button></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="empty">No records for these filters. Try a wider date range or <a href="{{ url_for('attendance') }}">clear the filters</a>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if pages > 1 %}
+  {% macro plink(n, label, aria) -%}
+    <a class="btn sm secondary" href="{{ url_for('attendance', page=n, **args) }}" aria-label="{{ aria }}">{{ label }}</a>
+  {%- endmacro %}
+  <nav class="pager no-print" aria-label="Pages">
+    <span class="small muted">Showing {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total]|min }} of {{ total }}</span>
+    <div class="row" style="gap:6px">
+      {% if page > 1 %}{{ plink(1, '«', 'First page') }}{{ plink(page - 1, '‹ Previous', 'Previous page') }}{% endif %}
+      <span class="small" aria-current="page">Page <b>{{ page }}</b> of {{ pages }}</span>
+      {% if page < pages %}{{ plink(page + 1, 'Next ›', 'Next page') }}{{ plink(pages, '»', 'Last page') }}{% endif %}
+    </div>
+  </nav>
+  {% endif %}
+  <p class="small muted" style="margin:12px 0 0">Late times are shown in <span class="late-sample">amber</span>. Day: Present = both halves, Half day = only morning or only afternoon.</p>
+</div>
+
+<dialog id="edit" aria-labelledby="edit-title">
+  <form method="post" action="{{ url_for('attendance_save') }}">
+    <h2 id="edit-title">Edit attendance</h2>
+    <p class="muted small" style="margin-top:-6px">For a forgotten card, an excused absence, or fixing a wrong tap.</p>
+    <div class="row">
+      <div class="field" style="flex:2"><label for="m-student">Student</label>
+        <select id="m-student" name="student_id" required><option value="">Choose a student…</option>
+          {% for s in all_students %}<option value="{{ s.id }}">{{ s.name }} ({{ s.student_no }})</option>{% endfor %}
+        </select></div>
+      <div class="field"><label for="m-date">Date</label><input type="date" id="m-date" name="date" required></div>
+    </div>
+    <fieldset class="half"><legend>Morning</legend>
+      <div class="row">
+        <div class="field"><label for="m-ami">In</label><input type="time" id="m-ami" name="am_in"></div>
+        <div class="field"><label for="m-amo">Out</label><input type="time" id="m-amo" name="am_out"></div>
+        <div class="field"><label for="m-ams">Status</label>
+          <select id="m-ams" name="am_status"><option value="PRESENT">Present</option><option value="LATE">Late</option><option value="EXCUSED">Excused</option><option value="ABSENT">Absent</option></select></div>
+      </div>
+    </fieldset>
+    <fieldset class="half"><legend>Afternoon</legend>
+      <div class="row">
+        <div class="field"><label for="m-pmi">In</label><input type="time" id="m-pmi" name="pm_in"></div>
+        <div class="field"><label for="m-pmo">Out</label><input type="time" id="m-pmo" name="pm_out"></div>
+        <div class="field"><label for="m-pms">Status</label>
+          <select id="m-pms" name="pm_status"><option value="PRESENT">Present</option><option value="LATE">Late</option><option value="EXCUSED">Excused</option><option value="ABSENT">Absent</option></select></div>
+      </div>
+    </fieldset>
+    <div class="field"><label for="m-remarks">Remarks</label><input type="text" id="m-remarks" name="remarks" placeholder="e.g. Forgot ID, medical certificate"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button type="button" class="btn secondary" onclick="document.getElementById('edit').close()">Cancel</button>
+      <button class="btn">Save</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+function openEdit(r) {
+  r = r || {date: "{{ end }}", am_status: "PRESENT", pm_status: "PRESENT"};
+  const set = (id, v) => document.getElementById(id).value = v || "";
+  set("m-student", r.student_id); set("m-date", r.date);
+  set("m-ami", r.am_in); set("m-amo", r.am_out); set("m-pmi", r.pm_in); set("m-pmo", r.pm_out);
+  set("m-ams", r.am_status === "PENDING" ? "ABSENT" : r.am_status);
+  set("m-pms", r.pm_status === "PENDING" ? "ABSENT" : r.pm_status);
+  set("m-remarks", r.remarks);
+  document.getElementById("edit").showModal();
+}
+</script>
+{% endblock %}
