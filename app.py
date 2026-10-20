@@ -28,9 +28,14 @@ import pcsc_bridge
 import serial_bridge
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024      # photos and CSV files
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024     # photos, CSV files and kiosk sounds
 PHOTO_DIR = os.path.join(db.BASE_DIR, "photos")
 BRANDING_DIR = os.path.join(db.BASE_DIR, "branding")
+SOUND_DIR = os.path.join(db.BASE_DIR, "sounds")
+SOUND_KINDS = {"in": "Logged in (on time)", "late": "Logged in late", "out": "Logged out",
+               "warn": "Already recorded / already out", "error": "Unknown card"}
+SOUND_PRESETS = {"classic": "Classic beep", "chime": "Chime", "bell": "School bell", "arcade": "Arcade", "soft": "Soft click"}
+SOUND_MAX_BYTES = 1_500_000
 PAGE_SIZE = 50
 
 
@@ -185,6 +190,50 @@ def save_logo(file):
     with open(os.path.join(BRANDING_DIR, name), "wb") as f:
         f.write(data)
     return name
+
+
+@app.route("/sounds/<path:name>")
+@login_required
+def sound_file(name):
+    return send_from_directory(SOUND_DIR, os.path.basename(name), max_age=86400)
+
+
+def save_sound(file, kind):
+    """Kiosk sound: MP3, WAV, OGG or M4A up to 1.5 MB. Returns the file name, or None if it isn't audio."""
+    data = file.read(SOUND_MAX_BYTES + 1)
+    if len(data) > SOUND_MAX_BYTES:
+        return None
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        ext = "wav"
+    elif data[:4] == b"OggS":
+        ext = "ogg"
+    elif data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0):
+        ext = "mp3"
+    elif data[4:8] == b"ftyp":
+        ext = "m4a"
+    else:
+        return None
+    os.makedirs(SOUND_DIR, exist_ok=True)
+    name = f"{kind}_{int(time.time() * 1000)}.{ext}"
+    with open(os.path.join(SOUND_DIR, name), "wb") as f:
+        f.write(data)
+    return name
+
+
+def delete_sound(name):
+    if name:
+        try:
+            os.remove(os.path.join(SOUND_DIR, os.path.basename(name)))
+        except OSError:
+            pass
+
+
+def sound_config(settings=None):
+    """What the kiosk plays: a preset, plus uploaded files for the kinds that have one."""
+    s = settings or db.get_settings()
+    files = {k: url_for("sound_file", name=s[f"sound_{k}"]) for k in SOUND_KINDS if s.get(f"sound_{k}")}
+    preset = s.get("sound_preset") if s.get("sound_preset") in SOUND_PRESETS else "classic"
+    return {"preset": preset, "files": files}
 
 
 # ---------------------------------------------------------------- auth
@@ -372,7 +421,7 @@ def reports_export():
 @app.route("/kiosk")
 @login_required
 def kiosk():
-    return render_template("kiosk.html")
+    return render_template("kiosk.html", sounds=sound_config())
 
 
 @app.route("/api/kiosk")
@@ -394,7 +443,7 @@ def api_kiosk():
             if after is not None else []
     now = datetime.now()
     s = db.get_settings()
-    return jsonify(last_id=last, new=[dict(r) for r in reversed(new)], recent=[dict(r) for r in recent],
+    return jsonify(last_id=last, new=[dict(r) for r in reversed(new)], recent=[dict(r) for r in recent], sounds=sound_config(s),
                    period=db.current_period(now, s), reader=reader_status()["state"], reader_mode=s["reader_mode"],
                    now=now.strftime("%I:%M").lstrip("0"), ampm=now.strftime("%p"),
                    date=now.strftime("%A, %B %d, %Y").replace(" 0", " "))
@@ -761,6 +810,28 @@ def settings_page():
                     flash("The logo must be a PNG, JPG or WebP image under 2 MB.", "error")
                     return redirect(url_for("settings_page"))
             flash("School details saved.", "success")
+        elif action == "sounds":
+            preset = f.get("sound_preset", "classic")
+            db.save_settings({"sound_preset": preset if preset in SOUND_PRESETS else "classic"})
+            current = db.get_settings()
+            bad = []
+            for kind, label in SOUND_KINDS.items():
+                key, old = f"sound_{kind}", current[f"sound_{kind}"]
+                upload = request.files.get(key)
+                if upload and upload.filename:
+                    name = save_sound(upload, kind)
+                    if name:
+                        db.save_settings({key: name})
+                        delete_sound(old)
+                    else:
+                        bad.append(label)
+                elif f.get(key + "_remove") == "1" and old:
+                    db.save_settings({key: ""})
+                    delete_sound(old)
+            if bad:
+                flash("Not saved: " + ", ".join(bad) + ". Use an MP3, WAV, OGG or M4A file under 1.5 MB.", "error")
+            else:
+                flash("Kiosk sounds saved. Open kiosks pick them up within a few seconds.", "success")
         elif action == "holiday_add":
             d = parse_date(f.get("date"), None)
             if d:
@@ -823,6 +894,7 @@ def settings_page():
         teachers = conn.execute("SELECT id, username, full_name FROM teachers ORDER BY id").fetchall()
     holidays = sorted(d for d in db.get_settings()["no_class_dates"].split(",") if d)
     return render_template("settings.html", ports=serial_bridge.available_ports(),
+                           sound_kinds=SOUND_KINDS, sound_presets=SOUND_PRESETS, sounds=sound_config(),
                            pcsc_readers=pcsc_bridge.available_readers(),
                            pyscard_ok=pcsc_bridge.list_readers is not None, cards=cards,
                            teachers=teachers, me=session["teacher_id"], holidays=holidays,

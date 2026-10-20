@@ -5,23 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kiosk · {{ settings.school_name }} Attendance</title>
   <style>
-    @font-face { font-family: "Public Sans"; src: url("{{ url_for('static', filename='fonts/public-sans-latin-wght.woff2') }}") format("woff2");
-      font-weight: 100 900; font-style: normal; font-display: swap; }
     :root {
-      --bg: #07162b; --panel: #0e2240; --line: #213a5f; --text: #f3f6fb; --muted: #a9b5cc;
+      --bg: #0b1324; --panel: #121c33; --line: #24314f; --text: #f3f6fb; --muted: #a9b5cc;
       --ok: #22c55e; --late: #fbbf24; --out: #60a5fa; --bad: #f87171; --neutral: #94a3b8;
       --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
-    body { font-family: "Public Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; letter-spacing: .005em; background: var(--bg);
+    body { font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; background: var(--bg);
       color: var(--text); overflow: hidden; display: flex; flex-direction: column; min-height: 100dvh; }
     header { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 28px 44px 0; }
     .kiosk-status { position: fixed; left: 44px; bottom: 16px; display: flex; gap: 8px; z-index: 5; }
     .kiosk-status .banner { font-size: 15px; padding: 8px 14px; }
     .clock { justify-self: end; }
     .school { display: flex; align-items: center; gap: 14px; font-size: 22px; font-weight: 600; }
-    .logo { width: 44px; height: 44px; border-radius: 11px; background: #1d4f91; display: grid; place-items: center; font-weight: 700; }
+    .logo { width: 44px; height: 44px; border-radius: 11px; background: #1f5eff; display: grid; place-items: center; font-weight: 700; }
     .logo-img { width: 56px; height: 56px; object-fit: contain; background: #fff; padding: 4px; }
     .clock { text-align: right; font-variant-numeric: tabular-nums; }
     .clock .t { font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
@@ -29,7 +27,7 @@
     .clock .d { color: var(--muted); font-size: 17px; margin-top: 6px; }
 
     main { flex: 1; display: grid; place-items: center; position: relative; }
-    .stage { position: relative; width: min(1040px, 92vw); height: clamp(300px, 50vh, 560px); }
+    .stage { position: relative; width: min(920px, 92vw); height: min(440px, 60vh); }
     /* The result card grows out of the tap icon (where the student's attention is) and
        shrinks back into it, so the screen reads as a reaction to the tap. No overshoot. */
     .view { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -40,10 +38,10 @@
     .idle.hidden { transform: scale(1.04); }
 
     /* idle */
-    .tap-icon { width: 120px; height: 120px; color: #8fb4e6; margin-bottom: 22px; }
+    .tap-icon { width: 120px; height: 120px; color: #7aa2ff; margin-bottom: 22px; }
     .idle h1 { font-size: 56px; margin: 0; letter-spacing: -0.025em; line-height: 1.05; }
     .idle p { font-size: 22px; color: var(--muted); margin: 12px 0 0; }
-    .class-pill { font-size: 22px; font-weight: 600; color: #d3e2f6; background: #112a4d; border: 1px solid #2c5185;
+    .class-pill { font-size: 22px; font-weight: 600; color: #cfe0ff; background: #16244a; border: 1px solid #2b417a;
       padding: 8px 20px; border-radius: 99px; margin-bottom: 18px; }
 
     /* result */
@@ -65,27 +63,26 @@
     /* recent */
     footer { padding: 0 44px 68px; }
     :fullscreen footer { padding-bottom: 28px; }
-    .recent-title { color: var(--muted); font-size: 18px; font-weight: 600; margin-bottom: 10px; }
-    .recent { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; min-height: 84px; }
-    .r { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; min-width: 0; }
-    .r b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 24px; line-height: 1.2; }
-    .r span { font-size: 20px; color: var(--muted); }
+    .recent-title { color: var(--muted); font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; }
+    .recent { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; min-height: 66px; }
+    .r { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 0; }
+    .r b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
+    .r span { font-size: 14px; color: var(--muted); }
     .r .k { font-weight: 700; }
-    .r .k.in { color: var(--ok); } .r .k.out { color: var(--out); }
+    .r .k.in { color: var(--ok); } .r .k.out { color: var(--out); } .r .k.late { color: var(--late); }
 
     .banner { background: #3b1d1d; color: #fecaca;
       border: 1px solid #7f1d1d; padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 16px; }
     .focus-banner { background: #3a2e0b; color: #fde68a; border-color: #854d0e; font: inherit; font-weight: 600; cursor: pointer; }
     .kiosk-controls { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; }
     .fs { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: transparent; color: var(--muted); border: 1px solid var(--line);
-      border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 15px; cursor: pointer; }
-    .fs:focus-visible { outline: 2px solid #8fb4e6; outline-offset: 2px; }
-    @media (hover: hover) { .fs:hover { color: var(--text); border-color: var(--muted); } }
+      border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 14px; cursor: pointer; opacity: .6; }
+    .fs:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 2px; opacity: 1; }
+    @media (hover: hover) { .fs:hover { opacity: 1; } }
     :fullscreen .kiosk-controls { display: none; }
     .fs[aria-pressed="true"] { color: var(--text); }
     kbd { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 2px; }
-    @media (min-width: 1500px) { .recent { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-    @media (max-width: 900px) { .recent { grid-template-columns: repeat(2, minmax(0, 1fr)); } header, footer { padding-left: 20px; padding-right: 20px; } }
+    @media (max-width: 900px) { .recent { grid-template-columns: repeat(3, minmax(0, 1fr)); } header, footer { padding-left: 20px; padding-right: 20px; } }
     @media (prefers-reduced-motion: reduce) {
       .view, .view.hidden, .result.hidden, .idle.hidden { transform: none; }
       .view { transition: opacity 200ms ease; }
@@ -133,6 +130,7 @@
   <button class="fs" id="fs" type="button">Full screen</button>
 </div>
 <script src="{{ url_for('static', filename='scanner.js') }}"></script>
+<script src="{{ url_for('static', filename='sounds.js') }}"></script>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -174,48 +172,31 @@ function describe(s) {
               chip: "Already logged out"};
     default:
       return {accent: "var(--bad)", avatar: "BANG", name: "Card not registered",
-              line: "Please show this card to the office", chip: "Not recorded"};
+              line: `Please show this card to the office · <span style="font-family:Consolas,monospace">${esc(s.uid)}</span>`, chip: "Not recorded"};
   }
 }
 function greeting(ts) { const h = +ts.slice(11, 13); return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"; }
 
-/* Sounds that match the result, so a student knows what happened without looking:
-   in = rising, out = falling, already recorded = two soft equal notes, unknown card = low buzz.
+/* Sounds that match the result, so a student knows what happened without looking.
+   The preset and any uploaded sound files are chosen in Settings → Kiosk sounds (static/sounds.js).
    On by default for keyboard-type readers (they're silent). ACR122U/Arduino readers beep
    on their own, so it starts off there; the "Sound" button switches it either way. */
-const TONES = {
-  in:    [[659, .09, 0], [988, .16, .08]],
-  out:   [[988, .09, 0], [659, .16, .08]],
-  warn:  [[587, .08, 0], [587, .08, .14]],
-  error: [[220, .12, 0, "square"], [220, .12, .17, "square"], [220, .16, .34, "square"]],
-};
-const SOUND_OF = {AM_IN: "in", PM_IN: "in", AM_OUT: "out", PM_OUT: "out", DUP: "warn", DONE: "warn", UNKNOWN: "error"};
+let SOUNDS = {{ sounds|tojson }};
+KioskSounds.preload(SOUNDS);
+function soundKind(s) {
+  if (s.result === "AM_IN") return s.am_status === "LATE" ? "late" : "in";
+  if (s.result === "PM_IN") return s.pm_status === "LATE" ? "late" : "in";
+  if (s.result === "AM_OUT" || s.result === "PM_OUT") return "out";
+  if (s.result === "DUP" || s.result === "DONE") return "warn";
+  return "error";
+}
 let soundPref = null;
 try { soundPref = localStorage.getItem("kioskSound"); } catch (e) {}
 const soundOn = () => soundPref ? soundPref === "on" : KEYBOARD;
 function paintSound() { $("sound").textContent = soundOn() ? "Sound on" : "Sound off"; $("sound").setAttribute("aria-pressed", String(soundOn())); }
-let audioCtx = null;
-function unlockAudio() {
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
-  } catch (e) {}
-}
+function unlockAudio() { KioskSounds.unlock(); }
 ["pointerdown", "keydown"].forEach(ev => window.addEventListener(ev, unlockAudio, {capture: true}));
-function playTone(kind) {
-  if (!soundOn() || !audioCtx || audioCtx.state !== "running") return;
-  const t0 = audioCtx.currentTime;
-  for (const [freq, dur, at, type] of TONES[kind] || []) {
-    const t = t0 + at, osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-    osc.type = type || "sine"; osc.frequency.value = freq;
-    const peak = type === "square" ? 0.06 : 0.22;
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(peak, t + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t); osc.stop(t + dur + 0.02);
-  }
-}
+function playTone(kind) { if (soundOn()) KioskSounds.play(SOUNDS, kind); }
 
 function show(scan) {
   const v = describe(scan);
@@ -233,7 +214,7 @@ function show(scan) {
   el.classList.add("hidden"); void el.offsetWidth;
   // picture and sound start on the same frame
   requestAnimationFrame(() => {
-    playTone(SOUND_OF[scan.result] || "error");
+    playTone(soundKind(scan));
     $("idle").classList.add("hidden");
     el.classList.remove("hidden");
   });
@@ -251,8 +232,8 @@ function next() {
 const RECENT = {AM_IN: ["in", "In"], PM_IN: ["in", "In"], AM_OUT: ["out", "Out"], PM_OUT: ["out", "Out"]};
 function renderRecent(list) {
   $("recent").innerHTML = list.map(r => {
-    // Public screen: the history shows In/Out only. Late is shown privately on the student's own result card.
-    const [kind, label] = RECENT[r.result] || ["in", "In"];
+    let [kind, label] = RECENT[r.result] || ["in", "In"];
+    if ((r.result === "AM_IN" && r.am_status === "LATE") || (r.result === "PM_IN" && r.pm_status === "LATE")) [kind, label] = ["late", "Late"];
     return `<div class="r"><b>${esc(r.first_name)} ${esc(r.last_name[0])}.</b><span><span class="k ${kind}">${label}</span> · ${t12(r.scanned_at.slice(11))}</span></div>`;
   }).join("");
 }
@@ -276,6 +257,7 @@ async function pollOnce() {
     $("idle-sub").textContent = "Hold it flat on the reader until you hear the beep";
     KEYBOARD = d.reader_mode === "keyboard" || d.reader_mode === "both";
     paintSound();
+    if (d.sounds && JSON.stringify(d.sounds) !== JSON.stringify(SOUNDS)) { SOUNDS = d.sounds; KioskSounds.preload(SOUNDS); }
     $("offline").hidden = KEYBOARD || d.reader === "connected";
     checkFocus();
     if (lastId !== null && d.new.length) {
@@ -322,7 +304,7 @@ $("sound").addEventListener("click", () => {
   soundPref = soundOn() ? "off" : "on";
   try { localStorage.setItem("kioskSound", soundPref); } catch (e) {}
   unlockAudio(); paintSound();
-  if (soundOn()) playTone("in");
+  if (soundOn()) playTone("in");   // a quick sample so you know it works
 });
 paintSound();
 document.addEventListener("keydown", e => {

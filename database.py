@@ -65,6 +65,12 @@ DEFAULT_SETTINGS = {
     "school_address": "",
     "principal_name": "",           # "Noted by" on printed reports
     "school_logo": "",              # file name in the branding/ folder
+    "sound_preset": "classic",      # kiosk sounds: classic / chime / bell / arcade / soft
+    "sound_in": "",                 # uploaded audio files (in the sounds/ folder) that replace
+    "sound_late": "",               #   the preset for one kind of tap; empty = use the preset
+    "sound_out": "",
+    "sound_warn": "",
+    "sound_error": "",
     "serial_port": "",
     "reader_mode": "serial",        # serial = Arduino + RC522, acr122u = ACS ACR122U, keyboard = keyboard-type reader
 }
